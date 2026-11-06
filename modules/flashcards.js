@@ -113,6 +113,13 @@ const state = {
   cardTransitionLocked: false,
 };
 
+// 3Dカードのスタッキングコンテキストから切り離し、クリックを確実に受け取れるようにする。
+function mountBookmarkMenuPortal(){
+  if(els.bookmarkMenu && els.bookmarkMenu.parentElement !== document.body){
+    document.body.appendChild(els.bookmarkMenu);
+  }
+}
+
 function escapeHtml(s){
   return String(s)
     .replaceAll('&','&amp;')
@@ -268,7 +275,6 @@ function setBookmarkColor(item, patternKey, color, name = ''){
     state.bookmarks.unshift(record);
   }
   saveBookmarks();
-  syncParentBookmarkList();
 }
 
 function removeBookmark(item, patternKey){
@@ -303,15 +309,6 @@ function renderBookmarkMenu(){
     btn.title = `${COLOR_META[color].label}（${color}）`;
     btn.setAttribute('aria-label', `${COLOR_META[color].label}色を選択`);
     btn.setAttribute('aria-pressed', state.bookmarkDraftColor === color ? 'true' : 'false');
-    btn.addEventListener('click', (event)=>{
-      event.preventDefault();
-      event.stopPropagation();
-      state.bookmarkDraftColor = color;
-      // クリックされたボタン自体をDOMから取り外さず、選択状態だけを更新します。
-      // 旧実装のようにinnerHTMLを再生成すると、documentの外側クリック判定が
-      // 「メニュー外」と誤認して閉じてしまい、保存・再変更ができなくなります。
-      updateBookmarkSwatchSelection();
-    });
     els.bookmarkMenuSwatches.appendChild(btn);
   });
 }
@@ -325,14 +322,19 @@ function openBookmarkMenu(){
   els.bookmarkNameEnabled.checked = state.bookmarkUseName;
   els.bookmarkNameInput.value = state.bookmarkDraftName;
   els.bookmarkNameInput.disabled = !state.bookmarkUseName;
+  mountBookmarkMenuPortal();
   state.bookmarkMenuOpen = true;
   els.bookmarkMenu.hidden = false;
+  els.bookmarkMenu.setAttribute('aria-hidden','false');
   renderBookmarkMenu();
+  const selected = els.bookmarkMenuSwatches.querySelector(`[data-color="${state.bookmarkDraftColor}"]`);
+  if(selected) selected.focus();
 }
 
 function closeBookmarkMenu(){
   state.bookmarkMenuOpen = false;
   els.bookmarkMenu.hidden = true;
+  els.bookmarkMenu.setAttribute('aria-hidden','true');
 }
 
 function saveBookmarkFromMenu(){
@@ -668,108 +670,13 @@ function renderBookmarkList(){
 }
 
 function syncParentBookmarkList(){
+  // DOMのMutationObserverで親画面のボタンを置換すると、画面再描画時に
+  // observer自身のDOM変更が連鎖して復帰処理を阻害することがあるため、親へ明示通知する。
   try{
-    if(!window.parent || window.parent === window || !window.parent.document) return;
-    const parentDoc = window.parent.document;
-    const root = parentDoc.getElementById('bookmarkList');
-    if(!root) return;
-    const entries = state.bookmarks;
-    root.querySelectorAll('.item').forEach(outerItem=>{
-      const action = outerItem.querySelector('[data-remove], [data-edit]');
-      const key = action?.getAttribute('data-remove') || action?.getAttribute('data-edit');
-      const bm = entries.find(x=>x.key === key);
-      if(!bm) return;
-      const meta = bookmarkColorMeta(bm.color);
-      const title = outerItem.querySelector('.itemTitle');
-      const visibleTitle = bm.name || bm.patternLabel || '問題';
-      if(title && title.textContent !== visibleTitle) title.textContent = visibleTitle;
-      if(title) title.title = bm.name ? (bm.patternLabel || '') : '';
-      let patternNote = outerItem.querySelector('.bookmarkPatternNote');
-      if(bm.name){
-        if(!patternNote){ patternNote = parentDoc.createElement('div'); patternNote.className='itemMeta bookmarkPatternNote'; if(title) title.insertAdjacentElement('afterend',patternNote); }
-        if(patternNote && patternNote.textContent !== (bm.patternLabel || '')) patternNote.textContent = bm.patternLabel || '';
-      }else if(patternNote){ patternNote.remove(); }
-      const badge = outerItem.querySelector('.badge.bookmarked');
-      if(badge){
-        // 親画面側のCSSに依存しないよう、色付きブックマークSVGをDOMで描画します。
-        let marker = badge.querySelector('.bookmarkColorMarker');
-        let label = badge.querySelector('.bookmarkColorLabel');
-        if(!marker || !label){
-          badge.textContent = '';
-          marker = parentDoc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-          marker.setAttribute('viewBox','0 0 24 24');
-          marker.setAttribute('width','14');
-          marker.setAttribute('height','16');
-          marker.setAttribute('aria-hidden','true');
-          marker.setAttribute('class','bookmarkColorMarker');
-          const path = parentDoc.createElementNS('http://www.w3.org/2000/svg', 'path');
-          path.setAttribute('d','M6 3.75A2.25 2.25 0 0 1 8.25 1.5h7.5A2.25 2.25 0 0 1 18 3.75v18l-6-3.75-6 3.75v-18Z');
-          marker.appendChild(path);
-          label = parentDoc.createElement('span');
-          label.className = 'bookmarkColorLabel';
-          badge.append(marker, label);
-        }
-        marker.style.display = 'inline-block';
-        marker.style.flex = '0 0 14px';
-        marker.style.fill = meta.accent;
-        marker.style.stroke = meta.accent;
-        marker.style.width = '14px';
-        marker.style.height = '16px';
-        label.textContent = meta.label;
-        badge.style.display = 'inline-flex';
-        badge.style.alignItems = 'center';
-        badge.style.gap = '6px';
-        badge.style.background = meta.soft;
-        badge.style.borderColor = meta.border;
-        badge.style.color = meta.text;
-        badge.setAttribute('aria-label', `ブックマーク色：${meta.label}`);
-      }
-      outerItem.style.background = meta.itemBg;
-      outerItem.style.borderColor = meta.border;
-      outerItem.style.borderLeft = `4px solid ${meta.accent}`;
-      // 親画面(3.app.js)のprompt入力式ボタンを、暗記カード画面と同じ色見本パネルに差し替えます。
-      const parentColorButton = outerItem.querySelector('[data-edit]');
-      if(parentColorButton && parentColorButton.dataset.bookmarkColorPickerBound !== '1'){
-        const replacementButton = parentColorButton.cloneNode(true); // 旧prompt用イベントを除去
-        replacementButton.dataset.bookmarkColorPickerBound = '1';
-        replacementButton.addEventListener('click',event=>{
-          event.preventDefault();
-          event.stopPropagation();
-          openBookmarkColorPicker(key,parentDoc);
-        });
-        parentColorButton.replaceWith(replacementButton);
-      }
-      const row = outerItem.querySelector('.row');
-      if(row && !row.querySelector('[data-bookmark-rename]')){
-        const rename = parentDoc.createElement('button');
-        rename.type='button'; rename.className='btn secondary'; rename.textContent='名前を編集';
-        rename.setAttribute('data-bookmark-rename',key);
-        rename.addEventListener('click',()=>{
-          const value = window.prompt('ブックマーク名を入力してください。空欄にすると名前なしになります。', bm.name || '');
-          if(value === null) return;
-          const name = value.trim().slice(0,40);
-          if(name) bm.name=name; else delete bm.name;
-          bm.updatedAt = new Date().toISOString();
-          saveBookmarks(); renderHome(); syncParentBookmarkList();
-        });
-        row.insertBefore(rename,row.firstChild);
-      }
-    });
-  }catch(error){
-    // iframeが直接開かれた場合や別オリジンの場合、親画面との同期はスキップします。
-  }
-}
-
-let parentBookmarkObserver = null;
-function observeParentBookmarkList(){
-  try{
-    if(!window.parent || window.parent === window || !window.parent.document) return;
-    const root = window.parent.document.getElementById('bookmarkList');
-    if(!root || !window.parent.MutationObserver) return;
-    parentBookmarkObserver = new window.parent.MutationObserver(()=>syncParentBookmarkList());
-    parentBookmarkObserver.observe(root,{childList:true,subtree:true});
-    syncParentBookmarkList();
-  }catch(error){}
+    if(window.parent && window.parent !== window && window.parent.AppShell?.refreshBookmarkList){
+      window.parent.AppShell.refreshBookmarkList();
+    }
+  }catch(error){ /* iframeを単独起動した場合は親画面同期を省略 */ }
 }
 
 function renderHome(){
@@ -850,6 +757,19 @@ els.bookmarkBtnBack.addEventListener('click', (e)=>{
 });
 els.bookmarkMenuCloseBtn.addEventListener('click', closeBookmarkMenu);
 els.bookmarkMenuSaveBtn.addEventListener('click', saveBookmarkFromMenu);
+els.bookmarkMenuSwatches.addEventListener('click', event=>{
+  const button = event.target.closest('button.swatch[data-color]');
+  if(!button || !els.bookmarkMenuSwatches.contains(button)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const color = button.dataset.color;
+  if(!COLOR_OPTIONS.includes(color)) return;
+  state.bookmarkDraftColor = color;
+  updateBookmarkSwatchSelection();
+});
+els.bookmarkMenu.addEventListener('click', event=>{
+  if(event.target === els.bookmarkMenu) closeBookmarkMenu();
+});
 els.bookmarkNameEnabled.addEventListener('change',()=>{
   state.bookmarkUseName = els.bookmarkNameEnabled.checked;
   els.bookmarkNameInput.disabled = !state.bookmarkUseName;
@@ -865,6 +785,12 @@ document.addEventListener('click', e=>{
     || els.bookmarkMenu.contains(e.target) || els.bookmarkBtn.contains(e.target) || els.bookmarkBtnBack.contains(e.target);
   if(!clickedInside) closeBookmarkMenu();
 });
+document.addEventListener('keydown', e=>{
+  if(state.bookmarkMenuOpen && e.key === 'Escape'){
+    e.preventDefault();
+    closeBookmarkMenu();
+  }
+});
 els.toggleBookmarkOnlyBtn.addEventListener('click', ()=>{
   state.bookmarkOnlySession = !state.bookmarkOnlySession;
   els.bookmarkedOnlyStart.checked = state.bookmarkOnlySession;
@@ -876,7 +802,7 @@ renderPatternCheckboxes();
 renderBookmarkMenu();
 els.toggleBookmarkOnlyBtn.textContent = `保存済みのみで開始: ${state.bookmarkOnlySession ? 'ON' : 'OFF'}`;
 renderHome();
-observeParentBookmarkList();
+mountBookmarkMenuPortal();
 
 window.appBridge = {
   setSetup(data, patterns){
@@ -894,6 +820,7 @@ window.appBridge = {
   },
   refresh(){ renderHome(); },
   getBookmarks(){ return state.bookmarks.map(b=>JSON.parse(JSON.stringify(b))); },
+  openBookmarkColorPicker(key, targetDoc){ openBookmarkColorPicker(key, targetDoc || document); return true; },
   editBookmark(key, color, name){
     if(!COLOR_OPTIONS.includes(color)) return false;
     const bm = state.bookmarks.find(x=>x.key===key);

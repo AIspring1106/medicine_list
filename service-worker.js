@@ -3,7 +3,7 @@
  * オンライン時は常にサーバーの最新ファイルを優先し、取得できない場合だけキャッシュを使用します。
  * 新しいService Workerは待機状態になり、画面の「更新を適用」操作で切り替わります。
  */
-const CACHE_NAME = 'medicine-learning-pwa-v1.1.0';
+const CACHE_NAME = 'medicine-learning-pwa-v1.2.0';
 const CACHE_PREFIX = 'medicine-learning-pwa-';
 const CORE_ASSETS = [
   './', './index.html', './1.indel.html', './2.style.css', './3.app.js', './database.js',

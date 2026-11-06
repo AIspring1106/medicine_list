@@ -200,6 +200,14 @@
     if (!showBookmarks) { ui.bookmarkList.innerHTML = '<div class="muted">一覧は非表示です。</div>'; return; }
     if (!list.length) { ui.bookmarkList.innerHTML = '<div class="muted">まだブックマークはありません。</div>'; return; }
     ui.bookmarkList.innerHTML = '';
+    const colorMeta = {
+      amber:{ label:'橙', accent:'#f59e0b', soft:'rgba(245,158,11,.14)', border:'rgba(245,158,11,.38)', text:'#8a5800', itemBg:'rgba(245,158,11,.055)' },
+      emerald:{ label:'緑', accent:'#22c55e', soft:'rgba(34,197,94,.13)', border:'rgba(34,197,94,.36)', text:'#166534', itemBg:'rgba(34,197,94,.055)' },
+      sky:{ label:'水色', accent:'#0ea5e9', soft:'rgba(14,165,233,.13)', border:'rgba(14,165,233,.36)', text:'#075985', itemBg:'rgba(14,165,233,.055)' },
+      violet:{ label:'紫', accent:'#8b5cf6', soft:'rgba(139,92,246,.13)', border:'rgba(139,92,246,.36)', text:'#5b21b6', itemBg:'rgba(139,92,246,.055)' },
+      rose:{ label:'赤', accent:'#f43f5e', soft:'rgba(244,63,94,.12)', border:'rgba(244,63,94,.34)', text:'#9f1239', itemBg:'rgba(244,63,94,.05)' },
+      slate:{ label:'灰', accent:'#64748b', soft:'rgba(100,116,139,.13)', border:'rgba(100,116,139,.34)', text:'#334155', itemBg:'rgba(100,116,139,.055)' }
+    };
     for (const b of list) {
       const names = {
         sales_to_generic:['salesName','genericName'], generic_to_sales:['genericName','salesName'],
@@ -208,16 +216,28 @@
       };
       const p = PATTERN_KEYS.includes(b.patternKey) ? b.patternKey : 'sales_to_generic';
       const pair = names[p];
+      const meta = colorMeta[b.color] || colorMeta.sky;
       const el = document.createElement('div'); el.className = 'item';
-      el.innerHTML = `<div class="itemTop"><div class="itemTitle">${esc(b.patternLabel || '問題')}</div><span class="badge bookmarked">${esc(b.color || 'sky')}</span></div><div class="itemMeta">問題: ${esc(b.item?.[pair[0]] || '')}</div><div class="itemMeta">答え: <b>${esc(b.item?.[pair[1]] || '')}</b></div><div class="row" style="margin-top:10px"><button class="btn secondary" data-edit="${esc(b.key)}">色を変更</button><button class="btn danger" data-remove="${esc(b.key)}">削除</button></div>`;
+      el.style.background = meta.itemBg;
+      el.style.borderColor = meta.border;
+      el.style.borderLeft = `4px solid ${meta.accent}`;
+      el.innerHTML = `<div class="itemTop"><div class="itemTitle">${esc(b.name || b.patternLabel || '問題')}</div><span class="badge bookmarked" style="background:${meta.soft};border-color:${meta.border};color:${meta.text}" aria-label="ブックマーク色：${meta.label}">${esc(meta.label)}</span></div>${b.name ? `<div class="itemMeta">${esc(b.patternLabel || '')}</div>` : ''}<div class="itemMeta">問題: ${esc(b.item?.[pair[0]] || '')}</div><div class="itemMeta">答え: <b>${esc(b.item?.[pair[1]] || '')}</b></div><div class="row" style="margin-top:10px"><button class="btn secondary" data-edit="${esc(b.key)}" type="button">色を変更</button><button class="btn secondary" data-rename="${esc(b.key)}" type="button">名前を編集</button><button class="btn danger" data-remove="${esc(b.key)}" type="button">削除</button></div>`;
       ui.bookmarkList.appendChild(el);
     }
     ui.bookmarkList.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => {
-      const color = prompt('ブックマーク色を入力してください (amber / emerald / sky / violet / rose / slate)', 'sky');
-      if (color && framesReady.flash) { ui.flashFrame.contentWindow.appBridge.editBookmark(btn.dataset.edit, color); renderBookmarks(); }
+      if (!framesReady.flash || !ui.flashFrame.contentWindow.appBridge) return;
+      ui.flashFrame.contentWindow.appBridge.openBookmarkColorPicker(btn.dataset.edit, document);
+    }));
+    ui.bookmarkList.querySelectorAll('[data-rename]').forEach(btn => btn.addEventListener('click', () => {
+      if (!framesReady.flash || !ui.flashFrame.contentWindow.appBridge) return;
+      const current = ui.flashFrame.contentWindow.appBridge.getBookmarks().find(item => item.key === btn.dataset.rename);
+      if (!current) return;
+      const value = prompt('ブックマーク名を入力してください。空欄にすると名前なしになります。', current.name || '');
+      if (value === null) return;
+      ui.flashFrame.contentWindow.appBridge.renameBookmark(btn.dataset.rename, value.trim().slice(0,40));
     }));
     ui.bookmarkList.querySelectorAll('[data-remove]').forEach(btn => btn.addEventListener('click', () => {
-      if (confirm('このブックマークを削除しますか？') && framesReady.flash) { ui.flashFrame.contentWindow.appBridge.removeBookmark(btn.dataset.remove); renderBookmarks(); }
+      if (confirm('このブックマークを削除しますか？') && framesReady.flash) ui.flashFrame.contentWindow.appBridge.removeBookmark(btn.dataset.remove);
     }));
   }
   function renderWrongs() {
@@ -458,7 +478,7 @@
     $('toggleBookmarksBtn').addEventListener('click', () => { showBookmarks = !showBookmarks; renderBookmarks(); });
     $('clearBookmarksBtn').addEventListener('click', () => {
       if (!confirm('ブックマークをすべて消去しますか？')) return;
-      if (framesReady.flash) ui.flashFrame.contentWindow.appBridge.clearBookmarks(); renderBookmarks();
+      if (framesReady.flash) ui.flashFrame.contentWindow.appBridge.clearBookmarks(); else renderBookmarks();
     });
     $('toggleWrongsBtn').addEventListener('click', () => { showWrongs = !showWrongs; renderWrongs(); });
     $('exportWrongCsvBtn').addEventListener('click', exportWrongCsv);
@@ -473,6 +493,7 @@
     $('logoutBtn').addEventListener('click', logout);
   }
   window.AppShell = {
+    refreshBookmarkList() { renderBookmarks(); },
     returnToMenu(mode) {
       // 学習画面から共通メニューへ戻す。通常は直前のメニュー履歴へ戻ります。
       const fallbackMode = mode === 'quiz' ? 'quiz' : 'flash';

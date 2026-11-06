@@ -120,22 +120,24 @@
             </div>
           </div>
 
-          <div id="bookmarkMenu" class="bookmarkMenu" hidden>
-            <div class="bookmarkMenuTitle">ブックマークの設定</div>
-            <p class="bookmarkMenuNote">色を選択できます。名前は任意です。名前を付けない場合はチェックを入れずに保存してください。</p>
-            <div class="bookmarkNameSettings">
-              <label class="bookmarkNameToggle" for="bookmarkNameEnabled">
-                <input type="checkbox" id="bookmarkNameEnabled">
-                <span>ブックマークに名前を付ける</span>
-              </label>
-              <input type="text" id="bookmarkNameInput" maxlength="40" placeholder="例：苦手な薬・復習用" disabled>
-            </div>
-            <div class="bookmarkMenuTitle bookmarkColorHeading">色を選択</div>
-            <div class="colorSwatches" id="bookmarkMenuSwatches"></div>
-            <div class="bookmarkMenuActions">
-              <button class="btn secondary" id="bookmarkMenuCloseBtn" type="button">閉じる</button>
-              <button class="btn success" id="bookmarkMenuSaveBtn" type="button">保存</button>
-            </div>
+          <div id="bookmarkMenu" class="bookmarkMenu" hidden aria-hidden="true">
+            <section class="bookmarkMenuDialog" role="dialog" aria-modal="true" aria-labelledby="bookmarkMenuHeading">
+              <div class="bookmarkMenuTitle" id="bookmarkMenuHeading">ブックマークの設定</div>
+              <p class="bookmarkMenuNote">色を選択できます。名前は任意です。名前を付けない場合はチェックを入れずに保存してください。</p>
+              <div class="bookmarkNameSettings">
+                <label class="bookmarkNameToggle" for="bookmarkNameEnabled">
+                  <input type="checkbox" id="bookmarkNameEnabled">
+                  <span>ブックマークに名前を付ける</span>
+                </label>
+                <input type="text" id="bookmarkNameInput" maxlength="40" placeholder="例：苦手な薬・復習用" disabled>
+              </div>
+              <div class="bookmarkMenuTitle bookmarkColorHeading">色を選択</div>
+              <div class="colorSwatches" id="bookmarkMenuSwatches" role="group" aria-label="ブックマークの色"></div>
+              <div class="bookmarkMenuActions">
+                <button class="btn secondary" id="bookmarkMenuCloseBtn" type="button">閉じる</button>
+                <button class="btn success" id="bookmarkMenuSaveBtn" type="button">保存</button>
+              </div>
+            </section>
           </div>
         </div>
 

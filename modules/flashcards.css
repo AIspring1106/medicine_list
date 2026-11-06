@@ -154,21 +154,25 @@
     .bookmarkBtn svg{width:24px;height:24px;fill:none;stroke:var(--bookmark);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
     .bookmarkBtn.saved svg{fill:var(--bookmark);stroke:var(--bookmark)}
 
+    /* カードの3D transform配下に置くと、スウォッチが背面に回り
+       クリックがカードへ透過する環境があるため、JSでbody直下へ移すモーダルにします。 */
     .bookmarkMenu{
-      position:absolute;
-      right:18px;
-      bottom:78px;
-      width:min(320px, calc(100% - 36px));
-      border-radius:18px;
-      border:1px solid #dbe7f3;
-      background:rgba(255,255,255,.98);
-      box-shadow:0 18px 40px rgba(15,23,42,.16);
-      padding:14px;
-      z-index:20;
-      backdrop-filter:blur(10px);
-      max-height:min(72vh,520px);overflow-y:auto;
+      position:fixed;inset:0;z-index:2147483000;
+      display:grid;place-items:center;
+      width:auto;height:auto;max-height:none;
+      padding:18px;overflow-y:auto;
+      background:rgba(15,23,42,.38);
+      backdrop-filter:blur(4px);
+      -webkit-backdrop-filter:blur(4px);
+      pointer-events:auto;
     }
-    .bookmarkMenu[hidden]{display:none}
+    .bookmarkMenu[hidden]{display:none!important}
+    .bookmarkMenuDialog{
+      width:min(380px,100%);max-height:min(82vh,620px);overflow-y:auto;
+      border-radius:20px;border:1px solid #dbe7f3;
+      background:rgba(255,255,255,.99);box-shadow:0 20px 60px rgba(15,23,42,.24);
+      padding:18px;color:var(--text);pointer-events:auto;
+    }
     .bookmarkMenuTitle{font-weight:800;margin:0 0 10px;font-size:.95rem}
     .bookmarkMenuNote{margin:0 0 12px;color:var(--muted);font-size:.84rem;line-height:1.5}
     .bookmarkMenuActions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
