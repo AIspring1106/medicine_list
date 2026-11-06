@@ -150,7 +150,7 @@
       flex:0 0 auto;
     }
     .bookmarkBtn:hover{transform:translateY(-1px)}
-    .bookmarkBtn.saved{background:var(--bookmarkSoft);border-color:rgba(245,158,11,.35)}
+    .bookmarkBtn.saved{background:var(--bookmarkSoft);border-color:var(--bookmarkBorder,rgba(245,158,11,.35))}
     .bookmarkBtn svg{width:24px;height:24px;fill:none;stroke:var(--bookmark);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
     .bookmarkBtn.saved svg{fill:var(--bookmark);stroke:var(--bookmark)}
 
@@ -166,6 +166,7 @@
       padding:14px;
       z-index:20;
       backdrop-filter:blur(10px);
+      max-height:min(72vh,520px);overflow-y:auto;
     }
     .bookmarkMenu[hidden]{display:none}
     .bookmarkMenuTitle{font-weight:800;margin:0 0 10px;font-size:.95rem}
@@ -202,3 +203,17 @@ html,body{height:auto;min-height:100%;overflow-x:hidden}
   body{margin:0}
   header,#homeScreen{display:none!important}
   .app{padding:18px 14px 28px}
+
+
+/* 任意のブックマーク名 */
+.bookmarkNameSettings{display:flex;flex-direction:column;gap:8px;margin:0 0 14px}
+.bookmarkNameToggle{display:flex;align-items:center;gap:9px;font-size:.9rem;font-weight:700;cursor:pointer}
+.bookmarkNameToggle input{width:18px;height:18px;accent-color:#0ea5e9}
+#bookmarkNameInput{width:100%;border:1px solid #cbd9ea;border-radius:12px;padding:11px 12px;font:inherit;background:#fff;color:var(--text)}
+#bookmarkNameInput:disabled{background:#f1f5f9;color:#94a3b8;cursor:not-allowed}
+.bookmarkColorHeading{margin-top:4px}
+.bookmarkListItem{border-left-width:5px}
+.bookmarkListName{font-weight:850;overflow-wrap:anywhere}
+.bookmarkListPattern{font-size:.82rem;color:var(--muted);margin-top:3px}
+.bookmarkColorBadge{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:5px 9px;font-size:.8rem;font-weight:750;border:1px solid transparent}
+.bookmarkColorBadge .dot{width:9px;height:9px}

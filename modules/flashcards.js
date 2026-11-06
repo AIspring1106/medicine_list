@@ -10,9 +10,9 @@ const safeLocalStorage = {
     catch(e) { return null; }
   },
   setItem(key, value){
-    const v = String(value);
+    const v=String(value);
     try { const db=getSharedDatabase(); if(db) db.setRaw(key,v); else window.localStorage.setItem(key,v); }
-    catch(e) { __volatileStore.set(key, v); }
+    catch(e) { __volatileStore.set(key,v); }
   },
   removeItem(key){
     try { const db=getSharedDatabase(); if(db) db.removeRaw(key); else window.localStorage.removeItem(key); } catch(e) {}
@@ -30,6 +30,23 @@ const PATTERNS = [
   { key:'effect_to_generic', label:'薬効 → 一般名', ask:'effect', ans:'genericName' },
 ];
 const COLOR_OPTIONS = ['amber','emerald','sky','violet','rose','slate'];
+const COLOR_META = {
+  amber:   { label:'橙', accent:'#f59e0b', soft:'rgba(245,158,11,.14)', border:'rgba(245,158,11,.38)', text:'#8a5800', itemBg:'rgba(245,158,11,.055)' },
+  emerald: { label:'緑', accent:'#22c55e', soft:'rgba(34,197,94,.13)', border:'rgba(34,197,94,.36)', text:'#166534', itemBg:'rgba(34,197,94,.055)' },
+  sky:     { label:'水色', accent:'#0ea5e9', soft:'rgba(14,165,233,.13)', border:'rgba(14,165,233,.36)', text:'#075985', itemBg:'rgba(14,165,233,.055)' },
+  violet:  { label:'紫', accent:'#8b5cf6', soft:'rgba(139,92,246,.13)', border:'rgba(139,92,246,.36)', text:'#5b21b6', itemBg:'rgba(139,92,246,.055)' },
+  rose:    { label:'赤', accent:'#f43f5e', soft:'rgba(244,63,94,.12)', border:'rgba(244,63,94,.34)', text:'#9f1239', itemBg:'rgba(244,63,94,.05)' },
+  slate:   { label:'灰', accent:'#64748b', soft:'rgba(100,116,139,.13)', border:'rgba(100,116,139,.34)', text:'#334155', itemBg:'rgba(100,116,139,.055)' }
+};
+function bookmarkColorMeta(color){ return COLOR_META[COLOR_OPTIONS.includes(color) ? color : 'sky']; }
+function applyBookmarkButtonColor(button, color, saved){
+  if(!button) return;
+  const meta=bookmarkColorMeta(color);
+  button.style.setProperty('--bookmark', meta.accent);
+  button.style.setProperty('--bookmarkSoft', meta.soft);
+  button.style.setProperty('--bookmarkBorder', meta.border);
+  button.classList.toggle('saved', !!saved);
+}
 
 const els = {
   homeScreen:document.getElementById('homeScreen'),
@@ -50,7 +67,6 @@ const els = {
   patternText:document.getElementById('patternText'),
   answerTitle:document.getElementById('answerTitle'),
   answerMeta:document.getElementById('answerMeta'),
-  answerText:document.getElementById('answerText'),
   srcSales:document.getElementById('srcSales'),
   srcGeneric:document.getElementById('srcGeneric'),
   srcEffect:document.getElementById('srcEffect'),
@@ -63,6 +79,8 @@ const els = {
   bookmarkMenuSwatches:document.getElementById('bookmarkMenuSwatches'),
   bookmarkMenuCloseBtn:document.getElementById('bookmarkMenuCloseBtn'),
   bookmarkMenuSaveBtn:document.getElementById('bookmarkMenuSaveBtn'),
+  bookmarkNameEnabled:document.getElementById('bookmarkNameEnabled'),
+  bookmarkNameInput:document.getElementById('bookmarkNameInput'),
   bookmarkCountBadge:document.getElementById('bookmarkCountBadge'),
   bookmarkHomeArea:document.getElementById('bookmarkHomeArea'),
   loadStatus:document.getElementById('loadStatus'),
@@ -80,6 +98,8 @@ const state = {
   showBookmarkList: true,
   bookmarkOnlySession: false,
   bookmarkDraftColor: 'sky',
+  bookmarkDraftName: '',
+  bookmarkUseName: false,
   bookmarkMenuOpen: false,
   cardTransitionLocked: false,
 };
@@ -216,24 +236,30 @@ function getBookmark(item, patternKey){
   return state.bookmarks.find(b => b.key === bookmarkKey(item, patternKey)) || null;
 }
 
-function setBookmarkColor(item, patternKey, color){
+function setBookmarkColor(item, patternKey, color, name = ''){
   const key = bookmarkKey(item, patternKey);
   const existing = state.bookmarks.find(b => b.key === key);
+  const cleanName = String(name || '').trim().slice(0,40);
   if(existing){
-    existing.color = color;
+    existing.color = COLOR_OPTIONS.includes(color) ? color : 'sky';
+    if(cleanName) existing.name = cleanName;
+    else delete existing.name;
     existing.updatedAt = new Date().toISOString();
   }else{
-    state.bookmarks.unshift({
+    const record = {
       key,
-      color,
+      color: COLOR_OPTIONS.includes(color) ? color : 'sky',
       item,
       patternKey,
       patternLabel: PATTERNS.find(p=>p.key === patternKey)?.label || patternKey,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    if(cleanName) record.name = cleanName;
+    state.bookmarks.unshift(record);
   }
   saveBookmarks();
+  syncParentBookmarkList();
 }
 
 function removeBookmark(item, patternKey){
@@ -256,7 +282,8 @@ function renderBookmarkMenu(){
     btn.type = 'button';
     btn.className = 'swatch' + (state.bookmarkDraftColor === color ? ' active' : '');
     btn.dataset.color = color;
-    btn.title = color;
+    btn.title = `${COLOR_META[color].label}（${color}）`;
+    btn.setAttribute('aria-label', `${COLOR_META[color].label}色を選択`);
     btn.addEventListener('click', ()=>{
       state.bookmarkDraftColor = color;
       renderBookmarkMenu();
@@ -269,6 +296,11 @@ function openBookmarkMenu(){
   if(!state.currentQuestion) return;
   const bm = getBookmark(state.currentQuestion.item, state.currentQuestion.pattern.key);
   state.bookmarkDraftColor = bm?.color || state.bookmarkDraftColor || 'sky';
+  state.bookmarkDraftName = bm?.name || '';
+  state.bookmarkUseName = !!state.bookmarkDraftName;
+  els.bookmarkNameEnabled.checked = state.bookmarkUseName;
+  els.bookmarkNameInput.value = state.bookmarkDraftName;
+  els.bookmarkNameInput.disabled = !state.bookmarkUseName;
   state.bookmarkMenuOpen = true;
   els.bookmarkMenu.hidden = false;
   renderBookmarkMenu();
@@ -281,7 +313,9 @@ function closeBookmarkMenu(){
 
 function saveBookmarkFromMenu(){
   if(!state.currentQuestion) return;
-  setBookmarkColor(state.currentQuestion.item, state.currentQuestion.pattern.key, state.bookmarkDraftColor || 'sky');
+  const name = state.bookmarkUseName ? els.bookmarkNameInput.value.trim().slice(0,40) : '';
+  setBookmarkColor(state.currentQuestion.item, state.currentQuestion.pattern.key, state.bookmarkDraftColor || 'sky', name);
+  state.bookmarkDraftName = name;
   closeBookmarkMenu();
   updateBookmarkUI();
   renderHome();
@@ -292,10 +326,12 @@ function updateBookmarkUI(){
   const bm = getBookmark(state.currentQuestion.item, state.currentQuestion.pattern.key);
   const saved = !!bm;
   const color = bm?.color || state.bookmarkDraftColor || 'sky';
-  els.bookmarkBtn.classList.toggle('saved', saved);
-  els.bookmarkBtnBack.classList.toggle('saved', saved);
-  els.bookmarkBtn.title = saved ? `保存済み (${color})` : '未保存';
-  els.bookmarkBtnBack.title = saved ? `保存済み (${color})` : '未保存';
+  const meta = bookmarkColorMeta(color);
+  applyBookmarkButtonColor(els.bookmarkBtn, color, saved);
+  applyBookmarkButtonColor(els.bookmarkBtnBack, color, saved);
+  const nameLabel = bm?.name ? `「${bm.name}」` : '';
+  els.bookmarkBtn.title = saved ? `保存済み ${nameLabel}（${meta.label}）` : '未保存';
+  els.bookmarkBtnBack.title = saved ? `保存済み ${nameLabel}（${meta.label}）` : '未保存';
   if(saved) state.bookmarkDraftColor = color;
   renderBookmarkMenu();
 }
@@ -410,44 +446,70 @@ function renderBookmarkList(){
   els.bookmarkHomeArea.innerHTML = '';
   if(!list.length){
     els.bookmarkHomeArea.innerHTML = '<div class="muted">まだブックマークはありません。</div>';
+    syncParentBookmarkList();
     return;
   }
   for(const b of list){
+    const meta = bookmarkColorMeta(b.color);
     const item = document.createElement('div');
-    item.className = 'item';
+    item.className = 'item bookmarkListItem';
+    item.style.background = meta.itemBg;
+    item.style.borderColor = meta.border;
+    item.style.borderLeftColor = meta.accent;
     item.innerHTML = `
       <div class="itemTop">
-        <div class="itemTitle">${escapeHtml(b.patternLabel || '問題')}</div>
-        <span class="badge bookmarked"><span class="dot ${escapeHtml(b.color || 'sky')}"></span>${escapeHtml(b.color || 'sky')}</span>
+        <div>
+          <div class="bookmarkListName">${escapeHtml(b.name || b.patternLabel || '問題')}</div>
+          ${b.name ? `<div class="bookmarkListPattern">${escapeHtml(b.patternLabel || '出題形式')}</div>` : ''}
+        </div>
+        <span class="bookmarkColorBadge" style="background:${meta.soft};border-color:${meta.border};color:${meta.text}"><span class="dot ${escapeHtml(b.color || 'sky')}"></span>${meta.label}</span>
       </div>
       <div class="itemMeta">問題: ${escapeHtml(displayJoined(b.item?.[PATTERNS.find(p=>p.key===b.patternKey)?.ask || 'salesName']))}</div>
       <div class="itemMeta">答え: <b>${escapeHtml(displayJoined(b.item?.[PATTERNS.find(p=>p.key===b.patternKey)?.ans || 'genericName']))}</b></div>
       <div class="itemMeta">販売名: ${escapeHtml(displayJoined(b.item?.salesName))} / 一般名: ${escapeHtml(displayJoined(b.item?.genericName))} / 薬効: ${escapeHtml(displayJoined(b.item?.effect))}</div>
       <div class="row" style="margin-top:10px;">
+        <button class="btn secondary" data-bookmark-name-edit="${escapeHtml(b.key)}">名前を編集</button>
         <button class="btn secondary" data-bookmark-edit="${escapeHtml(b.key)}">色を編集</button>
         <button class="btn danger" data-bookmark-remove="${escapeHtml(b.key)}">削除</button>
       </div>
     `;
     els.bookmarkHomeArea.appendChild(item);
   }
+  els.bookmarkHomeArea.querySelectorAll('[data-bookmark-name-edit]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const key = btn.getAttribute('data-bookmark-name-edit');
+      const bm = state.bookmarks.find(x=>x.key === key);
+      if(!bm) return;
+      const name = prompt('ブックマーク名を入力してください。空欄にすると名前なしになります。', bm.name || '');
+      if(name === null) return;
+      const cleanName = name.trim().slice(0,40);
+      if(cleanName) bm.name = cleanName;
+      else delete bm.name;
+      bm.updatedAt = new Date().toISOString();
+      saveBookmarks();
+      renderHome();
+      syncParentBookmarkList();
+    });
+  });
   els.bookmarkHomeArea.querySelectorAll('[data-bookmark-edit]').forEach(btn=>{
     btn.addEventListener('click',()=>{
       const key = btn.getAttribute('data-bookmark-edit');
       const bm = state.bookmarks.find(x=>x.key === key);
       if(!bm) return;
-      const color = prompt('ブックマーク色を入力してください (amber / emerald / sky / violet / rose / slate)', bm.color || 'sky');
+      const current = bm.color || 'sky';
+      const color = prompt('色を選択してください：amber（橙）/ emerald（緑）/ sky（水色）/ violet（紫）/ rose（赤）/ slate（灰）', current);
       if(!color) return;
-      if(!COLOR_OPTIONS.includes(color.trim())){
+      const normalized = color.trim().toLowerCase();
+      if(!COLOR_OPTIONS.includes(normalized)){
         alert('指定できる色は amber / emerald / sky / violet / rose / slate です。');
         return;
       }
-      bm.color = color.trim();
+      bm.color = normalized;
       bm.updatedAt = new Date().toISOString();
       saveBookmarks();
       renderHome();
-      if(state.currentQuestion && bookmarkKey(state.currentQuestion.item, state.currentQuestion.pattern.key) === key){
-        updateBookmarkUI();
-      }
+      syncParentBookmarkList();
+      if(state.currentQuestion && bookmarkKey(state.currentQuestion.item, state.currentQuestion.pattern.key) === key) updateBookmarkUI();
     });
   });
   els.bookmarkHomeArea.querySelectorAll('[data-bookmark-remove]').forEach(btn=>{
@@ -456,11 +518,75 @@ function renderBookmarkList(){
       state.bookmarks = state.bookmarks.filter(x=>x.key !== key);
       saveBookmarks();
       renderHome();
-      if(state.currentQuestion && bookmarkKey(state.currentQuestion.item, state.currentQuestion.pattern.key) === key){
-        updateBookmarkUI();
-      }
+      syncParentBookmarkList();
+      if(state.currentQuestion && bookmarkKey(state.currentQuestion.item, state.currentQuestion.pattern.key) === key) updateBookmarkUI();
     });
   });
+  syncParentBookmarkList();
+}
+
+function syncParentBookmarkList(){
+  try{
+    if(!window.parent || window.parent === window || !window.parent.document) return;
+    const parentDoc = window.parent.document;
+    const root = parentDoc.getElementById('bookmarkList');
+    if(!root) return;
+    const entries = state.bookmarks;
+    root.querySelectorAll('.item').forEach(outerItem=>{
+      const action = outerItem.querySelector('[data-remove], [data-edit]');
+      const key = action?.getAttribute('data-remove') || action?.getAttribute('data-edit');
+      const bm = entries.find(x=>x.key === key);
+      if(!bm) return;
+      const meta = bookmarkColorMeta(bm.color);
+      const title = outerItem.querySelector('.itemTitle');
+      const visibleTitle = bm.name || bm.patternLabel || '問題';
+      if(title && title.textContent !== visibleTitle) title.textContent = visibleTitle;
+      if(title) title.title = bm.name ? (bm.patternLabel || '') : '';
+      let patternNote = outerItem.querySelector('.bookmarkPatternNote');
+      if(bm.name){
+        if(!patternNote){ patternNote = parentDoc.createElement('div'); patternNote.className='itemMeta bookmarkPatternNote'; if(title) title.insertAdjacentElement('afterend',patternNote); }
+        if(patternNote && patternNote.textContent !== (bm.patternLabel || '')) patternNote.textContent = bm.patternLabel || '';
+      }else if(patternNote){ patternNote.remove(); }
+      const badge = outerItem.querySelector('.badge.bookmarked');
+      if(badge){
+        if(badge.textContent !== meta.label) badge.textContent = meta.label;
+        badge.style.background = meta.soft;
+        badge.style.borderColor = meta.border;
+        badge.style.color = meta.text;
+      }
+      outerItem.style.background = meta.itemBg;
+      outerItem.style.borderColor = meta.border;
+      const row = outerItem.querySelector('.row');
+      if(row && !row.querySelector('[data-bookmark-rename]')){
+        const rename = parentDoc.createElement('button');
+        rename.type='button'; rename.className='btn secondary'; rename.textContent='名前を編集';
+        rename.setAttribute('data-bookmark-rename',key);
+        rename.addEventListener('click',()=>{
+          const value = window.prompt('ブックマーク名を入力してください。空欄にすると名前なしになります。', bm.name || '');
+          if(value === null) return;
+          const name = value.trim().slice(0,40);
+          if(name) bm.name=name; else delete bm.name;
+          bm.updatedAt = new Date().toISOString();
+          saveBookmarks(); renderHome(); syncParentBookmarkList();
+        });
+        row.insertBefore(rename,row.firstChild);
+      }
+    });
+  }catch(error){
+    // iframeが直接開かれた場合や別オリジンの場合、親画面との同期はスキップします。
+  }
+}
+
+let parentBookmarkObserver = null;
+function observeParentBookmarkList(){
+  try{
+    if(!window.parent || window.parent === window || !window.parent.document) return;
+    const root = window.parent.document.getElementById('bookmarkList');
+    if(!root || !window.parent.MutationObserver) return;
+    parentBookmarkObserver = new window.parent.MutationObserver(()=>syncParentBookmarkList());
+    parentBookmarkObserver.observe(root,{childList:true,subtree:true});
+    syncParentBookmarkList();
+  }catch(error){}
 }
 
 function renderHome(){
@@ -541,6 +667,14 @@ els.bookmarkBtnBack.addEventListener('click', (e)=>{
 });
 els.bookmarkMenuCloseBtn.addEventListener('click', closeBookmarkMenu);
 els.bookmarkMenuSaveBtn.addEventListener('click', saveBookmarkFromMenu);
+els.bookmarkNameEnabled.addEventListener('change',()=>{
+  state.bookmarkUseName = els.bookmarkNameEnabled.checked;
+  els.bookmarkNameInput.disabled = !state.bookmarkUseName;
+  if(state.bookmarkUseName) els.bookmarkNameInput.focus();
+});
+els.bookmarkNameInput.addEventListener('input',()=>{
+  state.bookmarkDraftName = els.bookmarkNameInput.value.slice(0,40);
+});
 document.addEventListener('click', e=>{
   if(!state.bookmarkMenuOpen) return;
   const clickedInside = els.bookmarkMenu.contains(e.target) || els.bookmarkBtn.contains(e.target) || els.bookmarkBtnBack.contains(e.target);
@@ -557,6 +691,7 @@ renderPatternCheckboxes();
 renderBookmarkMenu();
 els.toggleBookmarkOnlyBtn.textContent = `保存済みのみで開始: ${state.bookmarkOnlySession ? 'ON' : 'OFF'}`;
 renderHome();
+observeParentBookmarkList();
 
 window.appBridge = {
   setSetup(data, patterns){
@@ -574,16 +709,26 @@ window.appBridge = {
   },
   refresh(){ renderHome(); },
   getBookmarks(){ return state.bookmarks.map(b=>JSON.parse(JSON.stringify(b))); },
-  editBookmark(key, color){
+  editBookmark(key, color, name){
     if(!COLOR_OPTIONS.includes(color)) return false;
     const bm = state.bookmarks.find(x=>x.key===key);
     if(!bm) return false;
-    bm.color = color; bm.updatedAt = new Date().toISOString();
-    saveBookmarks(); renderHome(); updateBookmarkUI(); return true;
+    bm.color = color;
+    if(name !== undefined){ const clean=String(name || '').trim().slice(0,40); if(clean) bm.name=clean; else delete bm.name; }
+    bm.updatedAt = new Date().toISOString();
+    saveBookmarks(); renderHome(); updateBookmarkUI(); syncParentBookmarkList(); return true;
+  },
+  renameBookmark(key, name){
+    const bm = state.bookmarks.find(x=>x.key===key);
+    if(!bm) return false;
+    const clean=String(name || '').trim().slice(0,40);
+    if(clean) bm.name=clean; else delete bm.name;
+    bm.updatedAt = new Date().toISOString();
+    saveBookmarks(); renderHome(); syncParentBookmarkList(); return true;
   },
   removeBookmark(key){
     state.bookmarks = state.bookmarks.filter(x=>x.key!==key);
-    saveBookmarks(); renderHome(); updateBookmarkUI();
+    saveBookmarks(); renderHome(); updateBookmarkUI(); syncParentBookmarkList();
   },
-  clearBookmarks(){ state.bookmarks=[]; saveBookmarks(); renderHome(); updateBookmarkUI(); }
+  clearBookmarks(){ state.bookmarks=[]; saveBookmarks(); renderHome(); updateBookmarkUI(); syncParentBookmarkList(); }
 };
