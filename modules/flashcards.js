@@ -284,6 +284,15 @@ function toggleBookmark(item, patternKey){
 }
 
 
+function updateBookmarkSwatchSelection(){
+  if(!els.bookmarkMenuSwatches) return;
+  els.bookmarkMenuSwatches.querySelectorAll('.swatch[data-color]').forEach(btn=>{
+    const active = btn.dataset.color === state.bookmarkDraftColor;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
 function renderBookmarkMenu(){
   els.bookmarkMenuSwatches.innerHTML = '';
   COLOR_OPTIONS.forEach(color=>{
@@ -293,9 +302,15 @@ function renderBookmarkMenu(){
     btn.dataset.color = color;
     btn.title = `${COLOR_META[color].label}（${color}）`;
     btn.setAttribute('aria-label', `${COLOR_META[color].label}色を選択`);
-    btn.addEventListener('click', ()=>{
+    btn.setAttribute('aria-pressed', state.bookmarkDraftColor === color ? 'true' : 'false');
+    btn.addEventListener('click', (event)=>{
+      event.preventDefault();
+      event.stopPropagation();
       state.bookmarkDraftColor = color;
-      renderBookmarkMenu();
+      // クリックされたボタン自体をDOMから取り外さず、選択状態だけを更新します。
+      // 旧実装のようにinnerHTMLを再生成すると、documentの外側クリック判定が
+      // 「メニュー外」と誤認して閉じてしまい、保存・再変更ができなくなります。
+      updateBookmarkSwatchSelection();
     });
     els.bookmarkMenuSwatches.appendChild(btn);
   });
@@ -304,7 +319,7 @@ function renderBookmarkMenu(){
 function openBookmarkMenu(){
   if(!state.currentQuestion) return;
   const bm = getBookmark(state.currentQuestion.item, state.currentQuestion.pattern.key);
-  state.bookmarkDraftColor = bm?.color || state.bookmarkDraftColor || 'sky';
+  state.bookmarkDraftColor = COLOR_OPTIONS.includes(bm?.color) ? bm.color : (COLOR_OPTIONS.includes(state.bookmarkDraftColor) ? state.bookmarkDraftColor : 'sky');
   state.bookmarkDraftName = bm?.name || '';
   state.bookmarkUseName = !!state.bookmarkDraftName;
   els.bookmarkNameEnabled.checked = state.bookmarkUseName;
@@ -323,7 +338,9 @@ function closeBookmarkMenu(){
 function saveBookmarkFromMenu(){
   if(!state.currentQuestion) return;
   const name = state.bookmarkUseName ? els.bookmarkNameInput.value.trim().slice(0,40) : '';
-  setBookmarkColor(state.currentQuestion.item, state.currentQuestion.pattern.key, state.bookmarkDraftColor || 'sky', name);
+  const selectedColor = COLOR_OPTIONS.includes(state.bookmarkDraftColor) ? state.bookmarkDraftColor : 'sky';
+  setBookmarkColor(state.currentQuestion.item, state.currentQuestion.pattern.key, selectedColor, name);
+  state.bookmarkDraftColor = selectedColor;
   state.bookmarkDraftName = name;
   closeBookmarkMenu();
   updateBookmarkUI();
@@ -341,8 +358,9 @@ function updateBookmarkUI(){
   const nameLabel = bm?.name ? `「${bm.name}」` : '';
   els.bookmarkBtn.title = saved ? `保存済み ${nameLabel}（${meta.label}）` : '未保存';
   els.bookmarkBtnBack.title = saved ? `保存済み ${nameLabel}（${meta.label}）` : '未保存';
-  if(saved) state.bookmarkDraftColor = color;
-  renderBookmarkMenu();
+  if(saved && !state.bookmarkMenuOpen) state.bookmarkDraftColor = color;
+  if(state.bookmarkMenuOpen) updateBookmarkSwatchSelection();
+  else renderBookmarkMenu();
 }
 function prepareSession(){
   const loaded = parseRows(els.dataInput.value);
@@ -449,6 +467,136 @@ function finishSession(){
   showScreen('home');
 }
 
+const BOOKMARK_PICKER_STYLE_ID = 'medicine-bookmark-color-picker-style';
+const BOOKMARK_PICKER_CSS = `
+.medicineBookmarkColorOverlay{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(15,23,42,.42);backdrop-filter:blur(4px)}
+.medicineBookmarkColorOverlay[hidden]{display:none!important}
+.medicineBookmarkColorDialog{width:min(360px,100%);padding:20px;border:1px solid #dbe7f3;border-radius:20px;background:#fff;color:#0f172a;box-shadow:0 20px 60px rgba(15,23,42,.25);font-family:system-ui,-apple-system,"Yu Gothic UI",Meiryo,sans-serif}
+.medicineBookmarkColorDialog h2{margin:0 0 7px;font-size:1.08rem;font-weight:800}
+.medicineBookmarkColorDialog p{margin:0 0 16px;color:#5b6b84;font-size:.88rem;line-height:1.55}
+.medicineBookmarkColorPalette{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.medicineBookmarkColorChoice{min-height:76px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;border:1px solid #dbe7f3;border-radius:13px;background:#fff;color:#0f172a;font:inherit;font-size:.84rem;font-weight:750;cursor:pointer}
+.medicineBookmarkColorChoice .medicineBookmarkColorCircle{width:27px;height:27px;border-radius:50%;background:var(--choice-color);border:2px solid rgba(15,23,42,.08);box-shadow:0 2px 6px rgba(15,23,42,.12)}
+.medicineBookmarkColorChoice[aria-pressed="true"]{border:2px solid var(--choice-color);background:var(--choice-soft);box-shadow:0 0 0 2px rgba(15,23,42,.04)}
+.medicineBookmarkColorActions{display:flex;justify-content:flex-end;gap:9px;margin-top:17px}
+.medicineBookmarkColorActions button{border:1px solid #d5e3f3;border-radius:11px;padding:10px 16px;background:#f5f8fc;color:#0f172a;font:inherit;font-weight:750;cursor:pointer}
+.medicineBookmarkColorActions button[data-save]{border-color:var(--choice-color,#0ea5e9);background:var(--choice-color,#0ea5e9);color:#fff}
+`;
+
+function ensureBookmarkColorPicker(doc){
+  if(!doc || !doc.body) return null;
+  if(!doc.getElementById(BOOKMARK_PICKER_STYLE_ID)){
+    const style = doc.createElement('style');
+    style.id = BOOKMARK_PICKER_STYLE_ID;
+    style.textContent = BOOKMARK_PICKER_CSS;
+    (doc.head || doc.documentElement).appendChild(style);
+  }
+  let overlay = doc.getElementById('medicineBookmarkColorOverlay');
+  if(overlay) return overlay;
+
+  overlay = doc.createElement('div');
+  overlay.id = 'medicineBookmarkColorOverlay';
+  overlay.className = 'medicineBookmarkColorOverlay';
+  overlay.hidden = true;
+  overlay.setAttribute('role','presentation');
+  const dialog = doc.createElement('section');
+  dialog.className = 'medicineBookmarkColorDialog';
+  dialog.setAttribute('role','dialog');
+  dialog.setAttribute('aria-modal','true');
+  dialog.setAttribute('aria-labelledby','medicineBookmarkColorTitle');
+  const heading = doc.createElement('h2');
+  heading.id = 'medicineBookmarkColorTitle';
+  heading.textContent = 'ブックマークの色を選択';
+  const note = doc.createElement('p');
+  note.textContent = '色を選択して「保存」を押してください。何度でも変更できます。';
+  const palette = doc.createElement('div');
+  palette.className = 'medicineBookmarkColorPalette';
+  palette.setAttribute('role','group');
+  palette.setAttribute('aria-label','ブックマーク色');
+  const actions = doc.createElement('div');
+  actions.className = 'medicineBookmarkColorActions';
+  const cancel = doc.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = 'キャンセル';
+  const save = doc.createElement('button');
+  save.type = 'button';
+  save.dataset.save = 'true';
+  save.textContent = '保存';
+  actions.append(cancel, save);
+  dialog.append(heading, note, palette, actions);
+  overlay.appendChild(dialog);
+  doc.body.appendChild(overlay);
+
+  const picker = { overlay, dialog, palette, save, cancel, key:null, color:'sky', doc };
+  overlay._medicineBookmarkPicker = picker;
+  COLOR_OPTIONS.forEach(color=>{
+    const meta = bookmarkColorMeta(color);
+    const button = doc.createElement('button');
+    button.type = 'button';
+    button.className = 'medicineBookmarkColorChoice';
+    button.dataset.color = color;
+    button.setAttribute('aria-pressed','false');
+    button.setAttribute('aria-label',`${meta.label}色を選択`);
+    button.style.setProperty('--choice-color',meta.accent);
+    button.style.setProperty('--choice-soft',meta.soft);
+    const circle = doc.createElement('span');
+    circle.className = 'medicineBookmarkColorCircle';
+    const label = doc.createElement('span');
+    label.textContent = meta.label;
+    button.append(circle,label);
+    button.addEventListener('click',()=>{
+      picker.color = color;
+      updateBookmarkColorPickerSelection(picker);
+    });
+    palette.appendChild(button);
+  });
+  const close = ()=>{ picker.overlay.hidden = true; };
+  cancel.addEventListener('click',close);
+  overlay.addEventListener('click',event=>{ if(event.target === overlay) close(); });
+  doc.addEventListener('keydown',event=>{
+    if(event.key === 'Escape' && !picker.overlay.hidden) close();
+  });
+  save.addEventListener('click',()=>{
+    const bm = state.bookmarks.find(entry=>entry.key === picker.key);
+    if(!bm) { close(); return; }
+    bm.color = COLOR_OPTIONS.includes(picker.color) ? picker.color : 'sky';
+    bm.updatedAt = new Date().toISOString();
+    saveBookmarks();
+    if(state.currentQuestion && bookmarkKey(state.currentQuestion.item,state.currentQuestion.pattern.key) === bm.key){
+      state.bookmarkDraftColor = bm.color;
+      updateBookmarkUI();
+    }
+    close();
+    renderHome();
+    syncParentBookmarkList();
+  });
+  return overlay;
+}
+
+function updateBookmarkColorPickerSelection(picker){
+  if(!picker) return;
+  const meta = bookmarkColorMeta(picker.color);
+  picker.palette.querySelectorAll('[data-color]').forEach(button=>{
+    const active = button.dataset.color === picker.color;
+    button.setAttribute('aria-pressed',active ? 'true' : 'false');
+  });
+  picker.save.style.setProperty('--choice-color',meta.accent);
+}
+
+function openBookmarkColorPicker(key, targetDoc = document){
+  const bm = state.bookmarks.find(entry=>entry.key === key);
+  if(!bm) return;
+  const overlay = ensureBookmarkColorPicker(targetDoc);
+  const picker = overlay?._medicineBookmarkPicker;
+  if(!picker) return;
+  picker.key = key;
+  picker.color = COLOR_OPTIONS.includes(bm.color) ? bm.color : 'sky';
+  updateBookmarkColorPickerSelection(picker);
+  overlay.hidden = false;
+  const selected = picker.palette.querySelector(`[data-color="${picker.color}"]`);
+  if(selected) selected.focus();
+}
+
 function renderBookmarkList(){
   const list = [...state.bookmarks].slice(0, 200);
   els.bookmarkCountBadge.textContent = `${list.length}件`;
@@ -503,22 +651,7 @@ function renderBookmarkList(){
   els.bookmarkHomeArea.querySelectorAll('[data-bookmark-edit]').forEach(btn=>{
     btn.addEventListener('click',()=>{
       const key = btn.getAttribute('data-bookmark-edit');
-      const bm = state.bookmarks.find(x=>x.key === key);
-      if(!bm) return;
-      const current = bm.color || 'sky';
-      const color = prompt('色を選択してください：amber（橙）/ emerald（緑）/ sky（水色）/ violet（紫）/ rose（赤）/ slate（灰）', current);
-      if(!color) return;
-      const normalized = color.trim().toLowerCase();
-      if(!COLOR_OPTIONS.includes(normalized)){
-        alert('指定できる色は amber / emerald / sky / violet / rose / slate です。');
-        return;
-      }
-      bm.color = normalized;
-      bm.updatedAt = new Date().toISOString();
-      saveBookmarks();
-      renderHome();
-      syncParentBookmarkList();
-      if(state.currentQuestion && bookmarkKey(state.currentQuestion.item, state.currentQuestion.pattern.key) === key) updateBookmarkUI();
+      openBookmarkColorPicker(key, document);
     });
   });
   els.bookmarkHomeArea.querySelectorAll('[data-bookmark-remove]').forEach(btn=>{
@@ -594,6 +727,18 @@ function syncParentBookmarkList(){
       outerItem.style.background = meta.itemBg;
       outerItem.style.borderColor = meta.border;
       outerItem.style.borderLeft = `4px solid ${meta.accent}`;
+      // 親画面(3.app.js)のprompt入力式ボタンを、暗記カード画面と同じ色見本パネルに差し替えます。
+      const parentColorButton = outerItem.querySelector('[data-edit]');
+      if(parentColorButton && parentColorButton.dataset.bookmarkColorPickerBound !== '1'){
+        const replacementButton = parentColorButton.cloneNode(true); // 旧prompt用イベントを除去
+        replacementButton.dataset.bookmarkColorPickerBound = '1';
+        replacementButton.addEventListener('click',event=>{
+          event.preventDefault();
+          event.stopPropagation();
+          openBookmarkColorPicker(key,parentDoc);
+        });
+        parentColorButton.replaceWith(replacementButton);
+      }
       const row = outerItem.querySelector('.row');
       if(row && !row.querySelector('[data-bookmark-rename]')){
         const rename = parentDoc.createElement('button');
@@ -715,7 +860,9 @@ els.bookmarkNameInput.addEventListener('input',()=>{
 });
 document.addEventListener('click', e=>{
   if(!state.bookmarkMenuOpen) return;
-  const clickedInside = els.bookmarkMenu.contains(e.target) || els.bookmarkBtn.contains(e.target) || els.bookmarkBtnBack.contains(e.target);
+  const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+  const clickedInside = path.includes(els.bookmarkMenu) || path.includes(els.bookmarkBtn) || path.includes(els.bookmarkBtnBack)
+    || els.bookmarkMenu.contains(e.target) || els.bookmarkBtn.contains(e.target) || els.bookmarkBtnBack.contains(e.target);
   if(!clickedInside) closeBookmarkMenu();
 });
 els.toggleBookmarkOnlyBtn.addEventListener('click', ()=>{
