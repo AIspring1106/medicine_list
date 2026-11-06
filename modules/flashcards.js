@@ -41,10 +41,19 @@ const COLOR_META = {
 function bookmarkColorMeta(color){ return COLOR_META[COLOR_OPTIONS.includes(color) ? color : 'sky']; }
 function applyBookmarkButtonColor(button, color, saved){
   if(!button) return;
-  const meta=bookmarkColorMeta(color);
+  const safeColor = COLOR_OPTIONS.includes(color) ? color : 'sky';
+  const meta = bookmarkColorMeta(safeColor);
+  button.dataset.bookmarkColor = safeColor;
+  button.setAttribute('aria-pressed', saved ? 'true' : 'false');
   button.style.setProperty('--bookmark', meta.accent);
   button.style.setProperty('--bookmarkSoft', meta.soft);
   button.style.setProperty('--bookmarkBorder', meta.border);
+  // SVG側にも色を直接指定し、端末・ブラウザのCSS変数差で既定色に戻るのを防ぎます。
+  const svg = button.querySelector('svg');
+  if(svg){
+    svg.style.stroke = meta.accent;
+    svg.style.fill = saved ? meta.accent : 'none';
+  }
   button.classList.toggle('saved', !!saved);
 }
 
@@ -462,7 +471,7 @@ function renderBookmarkList(){
           <div class="bookmarkListName">${escapeHtml(b.name || b.patternLabel || '問題')}</div>
           ${b.name ? `<div class="bookmarkListPattern">${escapeHtml(b.patternLabel || '出題形式')}</div>` : ''}
         </div>
-        <span class="bookmarkColorBadge" style="background:${meta.soft};border-color:${meta.border};color:${meta.text}"><span class="dot ${escapeHtml(b.color || 'sky')}"></span>${meta.label}</span>
+        <span class="bookmarkColorBadge" style="background:${meta.soft};border-color:${meta.border};color:${meta.text}"><svg class="bookmarkColorIcon" viewBox="0 0 24 24" aria-hidden="true" style="fill:${meta.accent};stroke:${meta.accent}"><path d="M6 3.75A2.25 2.25 0 0 1 8.25 1.5h7.5A2.25 2.25 0 0 1 18 3.75v18l-6-3.75-6 3.75v-18Z"></path></svg>${meta.label}</span>
       </div>
       <div class="itemMeta">問題: ${escapeHtml(displayJoined(b.item?.[PATTERNS.find(p=>p.key===b.patternKey)?.ask || 'salesName']))}</div>
       <div class="itemMeta">答え: <b>${escapeHtml(displayJoined(b.item?.[PATTERNS.find(p=>p.key===b.patternKey)?.ans || 'genericName']))}</b></div>
@@ -549,13 +558,42 @@ function syncParentBookmarkList(){
       }else if(patternNote){ patternNote.remove(); }
       const badge = outerItem.querySelector('.badge.bookmarked');
       if(badge){
-        if(badge.textContent !== meta.label) badge.textContent = meta.label;
+        // 親画面側のCSSに依存しないよう、色付きブックマークSVGをDOMで描画します。
+        let marker = badge.querySelector('.bookmarkColorMarker');
+        let label = badge.querySelector('.bookmarkColorLabel');
+        if(!marker || !label){
+          badge.textContent = '';
+          marker = parentDoc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          marker.setAttribute('viewBox','0 0 24 24');
+          marker.setAttribute('width','14');
+          marker.setAttribute('height','16');
+          marker.setAttribute('aria-hidden','true');
+          marker.setAttribute('class','bookmarkColorMarker');
+          const path = parentDoc.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d','M6 3.75A2.25 2.25 0 0 1 8.25 1.5h7.5A2.25 2.25 0 0 1 18 3.75v18l-6-3.75-6 3.75v-18Z');
+          marker.appendChild(path);
+          label = parentDoc.createElement('span');
+          label.className = 'bookmarkColorLabel';
+          badge.append(marker, label);
+        }
+        marker.style.display = 'inline-block';
+        marker.style.flex = '0 0 14px';
+        marker.style.fill = meta.accent;
+        marker.style.stroke = meta.accent;
+        marker.style.width = '14px';
+        marker.style.height = '16px';
+        label.textContent = meta.label;
+        badge.style.display = 'inline-flex';
+        badge.style.alignItems = 'center';
+        badge.style.gap = '6px';
         badge.style.background = meta.soft;
         badge.style.borderColor = meta.border;
         badge.style.color = meta.text;
+        badge.setAttribute('aria-label', `ブックマーク色：${meta.label}`);
       }
       outerItem.style.background = meta.itemBg;
       outerItem.style.borderColor = meta.border;
+      outerItem.style.borderLeft = `4px solid ${meta.accent}`;
       const row = outerItem.querySelector('.row');
       if(row && !row.querySelector('[data-bookmark-rename]')){
         const rename = parentDoc.createElement('button');
