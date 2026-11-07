@@ -4,7 +4,8 @@
  * 旧版キャッシュは新版のインストール・有効化が成功するまで維持します。
  */
 const APP_VERSION = '1.2.6';
-const CACHE_NAME = `medicine-learning-pwa-v${APP_VERSION}`;
+const APP_REVISION = 2;
+const CACHE_NAME = `medicine-learning-pwa-v${APP_VERSION}-r${APP_REVISION}`;
 const CACHE_PREFIX = 'medicine-learning-pwa-v';
 const CORE_ASSETS = [
   './', './index.html', './1.indel.html', './2.style.css', './3.app.js', './database.js',

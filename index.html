@@ -121,7 +121,17 @@
                 <option value="ordered">入力順（先頭から）</option>
               </select>
             </label>
-            <p class="tiny">選択した順序で最大108問を出題します。</p>
+            <p class="tiny">選択した医薬品から最大108問を出題します。</p>
+            <div class="rangeControl">
+              <label class="rangeTitle" for="quizRangeMode"><b>出題する医薬品</b></label>
+              <select id="quizRangeMode" class="selectControl">
+                <option value="all" selected>すべての医薬品</option>
+                <option value="custom">カスタム（行の範囲指定）</option>
+              </select>
+              <label class="rangeTitle" for="quizRangeInput">行の範囲</label>
+              <input id="quizRangeInput" class="rangeInput" type="text" placeholder="例：1-10,21-30" disabled>
+              <p class="rangeHelp">入力例：<b>1-10,21-30</b>（1～10行目と21～30行目）。複数の範囲は半角カンマで区切ります。行番号は、空行・不正行・重複行を除外した後の医薬品リストの順番です。</p>
+            </div>
           </div>
           <div id="flashcardOrderSetting" class="hidden orderSetting">
             <div class="divider"></div>
@@ -131,7 +141,17 @@
                 <option value="ordered">入力順（先頭から）</option>
               </select>
             </label>
-            <p class="tiny">入力した医薬品の並び順、またはランダムでカードを表示します。</p>
+            <p class="tiny">選択した医薬品のカードを表示します。</p>
+            <div class="rangeControl">
+              <label class="rangeTitle" for="flashcardRangeMode"><b>表示する医薬品</b></label>
+              <select id="flashcardRangeMode" class="selectControl">
+                <option value="all" selected>すべての医薬品</option>
+                <option value="custom">カスタム（行の範囲指定）</option>
+              </select>
+              <label class="rangeTitle" for="flashcardRangeInput">行の範囲</label>
+              <input id="flashcardRangeInput" class="rangeInput" type="text" placeholder="例：1-10,21-30" disabled>
+              <p class="rangeHelp">入力例：<b>1-10,21-30</b>（1～10行目と21～30行目）。複数の範囲は半角カンマで区切ります。行番号は、空行・不正行・重複行を除外した後の医薬品リストの順番です。</p>
+            </div>
           </div>
           <div id="flashcardOnlySetting" class="hidden">
             <div class="divider"></div>

@@ -37,3 +37,11 @@ textarea{width:100%;min-height:210px;resize:vertical;border:1px solid #cbd9ea;bo
 /* v1.2.6: ログイン画面からの更新確認 */
 .loginUpdateArea{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--card2)}
 .loginUpdateArea .footerNote{margin-bottom:0}
+
+/* v1.2.6 revision 2: 医薬品リストの行範囲指定 */
+.rangeControl{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}
+.rangeTitle{display:block;color:var(--text);font-size:.92rem}
+.rangeInput{width:100%;max-width:420px;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd9ea;border-radius:12px;background:#fff;color:var(--text);font:inherit}
+.rangeInput:focus{outline:2px solid #0ea5e9;outline-offset:2px}
+.rangeInput:disabled{background:#f1f5f9;color:#94a3b8;cursor:not-allowed}
+.rangeHelp{margin:0;color:var(--muted);font-size:.83rem;line-height:1.6}

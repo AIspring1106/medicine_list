@@ -3,6 +3,8 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const APP_VERSION = '1.2.6';
+  // v1.2.6内の更新識別子。画面機能の修正配布時も製品バージョン表記は維持します。
+  const APP_REVISION = 2;
   const PATTERN_KEYS = ['sales_to_generic','generic_to_sales','sales_to_effect','effect_to_sales','generic_to_effect','effect_to_generic'];
   const config = window.APP_CONFIG || {};
   const ui = {};
@@ -22,7 +24,7 @@
       'loginScreen','workspace','loginForm','commonPassword','loginError','passwordSetupNotice',
       'modeScreen','menuScreen','quizFrameWrap','flashFrameWrap','quizFrame','flashFrame',
       'sharedDataInput','loadStatus','patternList','modeBadge','startModeBtn','flashcardOnlySetting',
-      'bookmarkedOnly','quizOrderMode','flashcardOrderMode','quizOrderSetting','flashcardOrderSetting','quizWrongOptionsCard','reviewAllWrongsBtn','bookmarkList','bookmarkCount','wrongList','wrongCount','historyList','usageText',
+      'bookmarkedOnly','quizOrderMode','flashcardOrderMode','quizRangeMode','quizRangeInput','flashcardRangeMode','flashcardRangeInput','quizOrderSetting','flashcardOrderSetting','quizWrongOptionsCard','reviewAllWrongsBtn','bookmarkList','bookmarkCount','wrongList','wrongCount','historyList','usageText',
       'installBtn','updateBtn','updateHelp','loginUpdateBtn','loginUpdateHelp'
     ].forEach(id => ui[id] = $(id));
   }
@@ -44,6 +46,31 @@
     }
     return [...map.values()];
   }
+  // 1始まりの範囲指定（例：1-10,21-30）を、重複除外後の医薬品配列に適用します。
+  function selectRowsByRange(items, mode, rangeText) {
+    if (mode !== 'custom') return items.slice();
+    const raw = String(rangeText || '').trim();
+    if (!raw) throw new Error('カスタム範囲を入力してください。入力例：1-10,21-30');
+    const selected = new Set();
+    const parts = raw.split(/[,，]/);
+    for (const part of parts) {
+      const match = part.trim().match(/^(\d+)\s*(?:-\s*(\d+))?$/);
+      if (!match) throw new Error(`範囲「${part.trim()}」の形式が正しくありません。例：1-10,21-30`);
+      const start = Number(match[1]);
+      const end = match[2] ? Number(match[2]) : start;
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start) {
+        throw new Error(`範囲「${part.trim()}」が正しくありません。開始行は1以上、終了行は開始行以上にしてください。`);
+      }
+      if (end > items.length) {
+        throw new Error(`範囲「${part.trim()}」はデータ件数（${items.length}件）を超えています。1～${items.length}の範囲で指定してください。`);
+      }
+      for (let row = start; row <= end; row += 1) selected.add(row - 1);
+    }
+    return [...selected].sort((a,b) => a-b).map(index => items[index]);
+  }
+  function setRangeInputEnabled(modeElement, inputElement) {
+    if (modeElement && inputElement) inputElement.disabled = modeElement.value !== 'custom';
+  }
   function selectedPatterns() {
     return [...ui.patternList.querySelectorAll('input[type="checkbox"]:checked')].map(x => x.value);
   }
@@ -53,7 +80,11 @@
       patterns: selectedPatterns(),
       bookmarkedOnly: ui.bookmarkedOnly.checked,
       quizOrder: ui.quizOrderMode.value,
-      flashcardOrder: ui.flashcardOrderMode.value
+      flashcardOrder: ui.flashcardOrderMode.value,
+      quizRangeMode: ui.quizRangeMode.value,
+      quizRangeInput: ui.quizRangeInput.value,
+      flashcardRangeMode: ui.flashcardRangeMode.value,
+      flashcardRangeInput: ui.flashcardRangeInput.value
     });
   }
 
@@ -211,8 +242,8 @@
   function setSetupInFrames() {
     const data = ui.sharedDataInput.value;
     const patterns = selectedPatterns();
-    try { if (framesReady.quiz && ui.quizFrame.contentWindow.appBridge) ui.quizFrame.contentWindow.appBridge.setSetup(data, patterns, ui.quizOrderMode.value); } catch (error) { console.warn('Quiz setup was not ready.', error); }
-    try { if (framesReady.flash && ui.flashFrame.contentWindow.appBridge) ui.flashFrame.contentWindow.appBridge.setSetup(data, patterns, ui.flashcardOrderMode.value); } catch (error) { console.warn('Flashcard setup was not ready.', error); }
+    try { if (framesReady.quiz && ui.quizFrame.contentWindow.appBridge) ui.quizFrame.contentWindow.appBridge.setSetup(data, patterns, ui.quizOrderMode.value, ui.quizRangeMode.value, ui.quizRangeInput.value); } catch (error) { console.warn('Quiz setup was not ready.', error); }
+    try { if (framesReady.flash && ui.flashFrame.contentWindow.appBridge) ui.flashFrame.contentWindow.appBridge.setSetup(data, patterns, ui.flashcardOrderMode.value, ui.flashcardRangeMode.value, ui.flashcardRangeInput.value); } catch (error) { console.warn('Flashcard setup was not ready.', error); }
     persistSettings();
     updateDataStatus();
   }
@@ -222,6 +253,12 @@
     const patterns = selectedPatterns();
     if (!count) { alert('データが入力されていません。「販売名,一般名,薬効」を入力して読み込んでください。'); return; }
     if (!patterns.length) { alert('出題パターンを1つ以上選んでください。'); return; }
+    const rangeMode = selectedMode === 'quiz' ? ui.quizRangeMode.value : ui.flashcardRangeMode.value;
+    const rangeInput = selectedMode === 'quiz' ? ui.quizRangeInput.value : ui.flashcardRangeInput.value;
+    try {
+      const selectedItems = selectRowsByRange(parseRows(ui.sharedDataInput.value), rangeMode, rangeInput);
+      if (!selectedItems.length) { alert('指定範囲に該当する医薬品がありません。'); return; }
+    } catch (error) { alert(error.message || '行の範囲指定を確認してください。'); return; }
     const bridgeReady = selectedMode === 'quiz'
       ? framesReady.quiz && !!ui.quizFrame.contentWindow.appBridge
       : framesReady.flash && !!ui.flashFrame.contentWindow.appBridge;
@@ -230,11 +267,11 @@
     if (selectedMode === 'quiz') {
       setScreen('quiz');
       saveRoute({ page: 'quiz', mode: 'quiz' });
-      ui.quizFrame.contentWindow.appBridge.launch(ui.sharedDataInput.value, patterns, ui.quizOrderMode.value);
+      ui.quizFrame.contentWindow.appBridge.launch(ui.sharedDataInput.value, patterns, ui.quizOrderMode.value, ui.quizRangeMode.value, ui.quizRangeInput.value);
     } else {
       setScreen('flash');
       saveRoute({ page: 'flash', mode: 'flash' });
-      ui.flashFrame.contentWindow.appBridge.launch(ui.sharedDataInput.value, patterns, ui.bookmarkedOnly.checked, ui.flashcardOrderMode.value);
+      ui.flashFrame.contentWindow.appBridge.launch(ui.sharedDataInput.value, patterns, ui.bookmarkedOnly.checked, ui.flashcardOrderMode.value, ui.flashcardRangeMode.value, ui.flashcardRangeInput.value);
     }
   }
   function groupWrong(records) {
@@ -412,6 +449,12 @@
     ui.bookmarkedOnly.checked = !!saved.bookmarkedOnly;
     ui.quizOrderMode.value = saved.quizOrder === 'ordered' ? 'ordered' : 'random';
     ui.flashcardOrderMode.value = saved.flashcardOrder === 'ordered' ? 'ordered' : 'random';
+    ui.quizRangeMode.value = saved.quizRangeMode === 'custom' ? 'custom' : 'all';
+    ui.quizRangeInput.value = String(saved.quizRangeInput || '');
+    ui.flashcardRangeMode.value = saved.flashcardRangeMode === 'custom' ? 'custom' : 'all';
+    ui.flashcardRangeInput.value = String(saved.flashcardRangeInput || '');
+    setRangeInputEnabled(ui.quizRangeMode, ui.quizRangeInput);
+    setRangeInputEnabled(ui.flashcardRangeMode, ui.flashcardRangeInput);
     workspaceInitialized = true;
     loadModeFrames();
     updateDataStatus();
@@ -439,7 +482,8 @@
     const payload = await response.json();
     const version = String(payload.version || '').trim();
     if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('公開版番号が不正です。');
-    return version;
+    const revision = Number.isSafeInteger(Number(payload.revision)) && Number(payload.revision) >= 1 ? Number(payload.revision) : 1;
+    return { version, revision };
   }
 
   function waitForWorkerState(worker, acceptedStates, timeoutMs = 30000) {
@@ -510,10 +554,13 @@
     setUpdateButtons(true, '更新を確認中…');
     setUpdateMessage('公開版と更新ファイル一式を確認しています。ダウンロードが完了するまで画面を閉じないでください。');
     try {
-      const publishedVersion = await fetchPublishedVersion();
+      const published = await fetchPublishedVersion();
+      const publishedVersion = published.version;
       const versionOrder = compareVersions(publishedVersion, APP_VERSION);
-      if (versionOrder < 0) {
-        throw new Error(`公開側の版（v${publishedVersion}）が端末側（v${APP_VERSION}）より古い状態です。GitHub Pagesにv${APP_VERSION}の一式が公開されているか確認してください。`);
+      const revisionOrder = versionOrder === 0 ? Math.sign(published.revision - APP_REVISION) : 0;
+      const hasUpdate = versionOrder > 0 || revisionOrder > 0;
+      if (versionOrder < 0 || (versionOrder === 0 && revisionOrder < 0)) {
+        throw new Error(`公開側（v${publishedVersion} revision ${published.revision}）が端末側（v${APP_VERSION} revision ${APP_REVISION}）より古い状態です。GitHub Pagesの公開状態を確認してください。`);
       }
 
       const secureContext = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
@@ -537,27 +584,27 @@
           return;
         }
         // Service Workerが初回登録として直接activateしたケースも反映します。
-        if (versionOrder > 0 && installedState === 'activated') {
+        if (hasUpdate && installedState === 'activated') {
           await waitForControllerChange(previousController, 10000);
           location.reload();
           return;
         }
 
-        if (versionOrder > 0) {
-          throw new Error(`公開版 v${publishedVersion} を確認しましたが、新版の完全な取得を確認できませんでした。配信が完了してから、もう一度「更新を確認」を押してください。旧版のキャッシュと学習データは保持しています。`);
+        if (hasUpdate) {
+          throw new Error(`公開版 v${publishedVersion} revision ${published.revision} を確認しましたが、新版の完全な取得を確認できませんでした。配信が完了してから、もう一度「更新を確認」を押してください。旧版のキャッシュと学習データは保持しています。`);
         }
-      } else if (versionOrder > 0) {
+      } else if (hasUpdate) {
         // Service Worker非対応環境では通常の再読み込みへフォールバックします。
         const refreshedUrl = new URL(location.href);
-        refreshedUrl.searchParams.set('app-refresh', `${publishedVersion}-${Date.now()}`);
+        refreshedUrl.searchParams.set('app-refresh', `${publishedVersion}-r${published.revision}-${Date.now()}`);
         location.replace(refreshedUrl.href);
         return;
       }
 
       setUpdateButtons(false, '更新を確認');
-      const message = `現在のバージョン（v${APP_VERSION}）は公開最新版です。学習履歴・ブックマーク・設定は保持されています。`;
+      const message = `現在のバージョン（v${APP_VERSION} revision ${APP_REVISION}）は公開最新版です。学習履歴・ブックマーク・設定は保持されています。`;
       setUpdateMessage(message);
-      alert(`更新はありません。現在のバージョンは v${APP_VERSION} です。`);
+      alert(`更新はありません。現在のバージョンは v${APP_VERSION} です（revision ${APP_REVISION}）。`);
     } catch (error) {
       console.error('Update check failed:', error);
       showUpdateError(`更新を確認できませんでした。インターネット接続とGitHub Pagesの公開状態を確認してください。詳細: ${error.message}`);
@@ -648,6 +695,10 @@
     ui.bookmarkedOnly.addEventListener('change', persistSettings);
     ui.quizOrderMode.addEventListener('change', () => { persistSettings(); if (framesReady.quiz) setSetupInFrames(); });
     ui.flashcardOrderMode.addEventListener('change', () => { persistSettings(); if (framesReady.flash) setSetupInFrames(); });
+    ui.quizRangeMode.addEventListener('change', () => { setRangeInputEnabled(ui.quizRangeMode, ui.quizRangeInput); persistSettings(); if (framesReady.quiz) setSetupInFrames(); });
+    ui.quizRangeInput.addEventListener('input', () => { persistSettings(); if (framesReady.quiz) setSetupInFrames(); });
+    ui.flashcardRangeMode.addEventListener('change', () => { setRangeInputEnabled(ui.flashcardRangeMode, ui.flashcardRangeInput); persistSettings(); if (framesReady.flash) setSetupInFrames(); });
+    ui.flashcardRangeInput.addEventListener('input', () => { persistSettings(); if (framesReady.flash) setSetupInFrames(); });
     $('reviewAllWrongsBtn').addEventListener('click', () => {
       if (!framesReady.quiz || !ui.quizFrame.contentWindow.appBridge) { alert('クイズ画面を読み込めません。'); return; }
       const wrongs = ui.quizFrame.contentWindow.appBridge.getWrongs() || [];
