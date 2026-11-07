@@ -2,6 +2,7 @@
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
+  const APP_VERSION = '1.2.4';
   const PATTERN_KEYS = ['sales_to_generic','generic_to_sales','sales_to_effect','effect_to_sales','generic_to_effect','effect_to_generic'];
   const config = window.APP_CONFIG || {};
   const ui = {};
@@ -22,7 +23,7 @@
       'modeScreen','menuScreen','quizFrameWrap','flashFrameWrap','quizFrame','flashFrame',
       'sharedDataInput','loadStatus','patternList','modeBadge','startModeBtn','flashcardOnlySetting',
       'bookmarkedOnly','bookmarkList','bookmarkCount','wrongList','wrongCount','historyList','usageText',
-      'jsonDataFile','installBtn','updateBtn'
+      'installBtn','updateBtn','updateHelp'
     ].forEach(id => ui[id] = $(id));
   }
   function esc(value) {
@@ -292,30 +293,6 @@
     a.href = url; a.download = `医薬品クイズ_誤答一覧_${stamp}.csv`;
     document.body.appendChild(a); a.click(); a.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  function loadJsonFile(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result || ''));
-        const items = Array.isArray(parsed) ? parsed : parsed.items;
-        if (!Array.isArray(items)) throw new Error('items配列がありません');
-        const rows = items.map((x) => {
-          const sales = x.salesName ?? x.sales_name ?? x.sales ?? '';
-          const generic = x.genericName ?? x.generic_name ?? x.generic ?? '';
-          const effect = x.effect ?? x.category ?? '';
-          if (!sales || !generic || !effect) throw new Error('各項目に salesName, genericName, effect が必要です');
-          return `${sales},${generic},${effect}`;
-        });
-        ui.sharedDataInput.value = rows.join('\n');
-        persistSettings(); setSetupInFrames();
-        alert(`${rows.length}件の医薬品データを読み込みました。`);
-      } catch (error) {
-        alert(`JSONを読み込めませんでした。形式を確認してください。\n${error.message}`);
-      } finally { ui.jsonDataFile.value = ''; }
-    };
-    reader.onerror = () => alert('ファイルを読み込めませんでした。');
-    reader.readAsText(file, 'utf-8');
-  }
   function authenticate(event) {
     event.preventDefault();
     const expected = String(config.SHARED_PASSWORD || '');
@@ -367,34 +344,124 @@
     setSetupInFrames();
     setScreen('mode');
   }
+  function compareVersions(left, right) {
+    const a = String(left).split('.').map(Number);
+    const b = String(right).split('.').map(Number);
+    for (let index = 0; index < 3; index += 1) {
+      const delta = (a[index] || 0) - (b[index] || 0);
+      if (delta !== 0) return delta > 0 ? 1 : -1;
+    }
+    return 0;
+  }
+
+  async function fetchPublishedVersion() {
+    const url = new URL('./version.json', document.baseURI);
+    url.searchParams.set('_', String(Date.now()));
+    const response = await fetch(url.href, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+    });
+    if (!response.ok) throw new Error(`version.json の取得に失敗しました（HTTP ${response.status}）`);
+    const payload = await response.json();
+    const version = String(payload.version || '').trim();
+    if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('公開版番号が不正です。');
+    return version;
+  }
+
+  function waitForWorkerState(worker, acceptedStates, timeoutMs = 30000) {
+    if (!worker) return Promise.resolve(null);
+    if (acceptedStates.includes(worker.state)) return Promise.resolve(worker.state);
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        worker.removeEventListener('statechange', onStateChange);
+        error ? reject(error) : resolve(value);
+      };
+      const onStateChange = () => {
+        if (acceptedStates.includes(worker.state)) finish(null, worker.state);
+        else if (worker.state === 'redundant') finish(new Error('更新用Service Workerのインストールに失敗しました。'));
+      };
+      const timer = setTimeout(() => finish(new Error('Service Workerの更新処理がタイムアウトしました。')), timeoutMs);
+      worker.addEventListener('statechange', onStateChange);
+      onStateChange();
+    });
+  }
+
+  function waitForControllerChange(previousController, timeoutMs = 6000) {
+    if (navigator.serviceWorker.controller && navigator.serviceWorker.controller !== previousController) return Promise.resolve();
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        navigator.serviceWorker.removeEventListener('controllerchange', finish);
+        resolve();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      navigator.serviceWorker.addEventListener('controllerchange', finish);
+    });
+  }
+
+  async function clearApplicationCaches() {
+    if (!('caches' in window)) return;
+    const keys = await caches.keys();
+    await Promise.all(keys
+      .filter(key => key.startsWith('medicine-learning-pwa-'))
+      .map(key => caches.delete(key)));
+  }
+
+  async function activateWaitingWorker(registration) {
+    const waiting = registration?.waiting;
+    if (!waiting) return false;
+    const previousController = navigator.serviceWorker.controller;
+    const activated = waitForWorkerState(waiting, ['activated']);
+    waiting.postMessage({ type: 'SKIP_WAITING' });
+    await activated;
+    await waitForControllerChange(previousController);
+    return true;
+  }
+
+  function showUpdateError(message) {
+    ui.updateBtn.disabled = false;
+    ui.updateBtn.textContent = '更新を確認';
+    if (ui.updateHelp) {
+      ui.updateHelp.textContent = `${message} 更新が反映されない場合、保存したいデータがあるときは前もって別途保存した上で、ブラウザのサイトデータをクリアしてから再読み込みしてください。サイトデータを削除すると、この端末内のブックマーク・設定・学習履歴も消去されます。`;
+    }
+    alert(message);
+  }
+
   function registerPwa() {
-    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-      const hadController = !!navigator.serviceWorker.controller;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshingForUpdate && hadController) location.reload();
-      });
+    const secureContext = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if ('serviceWorker' in navigator && secureContext) {
       navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).then(async registration => {
         swRegistration = registration;
-        const showUpdateButton = () => {
-          ui.updateBtn.classList.remove('hidden');
-          ui.updateBtn.disabled = false;
-          ui.updateBtn.textContent = '更新を適用';
-        };
-        ui.updateBtn.classList.remove('hidden');
-        ui.updateBtn.textContent = '更新を確認';
-        if (registration.waiting && navigator.serviceWorker.controller) showUpdateButton();
+        if (registration.waiting && navigator.serviceWorker.controller) {
+          ui.updateBtn.textContent = '更新を確認（更新あり）';
+        }
         registration.addEventListener('updatefound', () => {
           const installing = registration.installing;
           if (!installing) return;
           installing.addEventListener('statechange', () => {
-            if (installing.state === 'installed' && navigator.serviceWorker.controller) showUpdateButton();
+            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+              ui.updateBtn.textContent = '更新を確認（更新あり）';
+            }
           });
         });
-        // 起動時にも公開先を確認し、更新があればwaiting workerとして検出します。
-        try { await registration.update(); } catch (error) { console.warn('Service Worker update check failed:', error); }
-        if (registration.waiting && navigator.serviceWorker.controller) showUpdateButton();
-      }).catch(err => console.warn('Service Worker registration failed:', err));
+        // 初回表示時にも更新確認を行います。失敗してもアプリの利用は継続できます。
+        try { await registration.update(); }
+        catch (error) { console.warn('Initial Service Worker update check failed:', error); }
+      }).catch(err => {
+        console.warn('Service Worker registration failed:', err);
+        if (ui.updateHelp) ui.updateHelp.textContent = 'この環境ではService Workerを登録できません。HTTPSまたはlocalhostで開いていることを確認してください。更新が反映されない場合は、保存データを別途保存したうえでサイトデータをクリアして再読み込みしてください。';
+      });
+    } else if (ui.updateHelp) {
+      ui.updateHelp.textContent = 'この環境ではService Workerによる自動更新を利用できません。HTTPSまたはlocalhostで開いてください。更新が反映されない場合は、保存データを別途保存したうえでサイトデータをクリアして再読み込みしてください。';
     }
+
     window.addEventListener('beforeinstallprompt', event => {
       event.preventDefault(); deferredInstallPrompt = event;
       ui.installBtn.classList.remove('hidden');
@@ -407,48 +474,59 @@
       deferredInstallPrompt = null;
       ui.installBtn.classList.add('hidden');
     });
+
     ui.updateBtn.addEventListener('click', async () => {
       ui.updateBtn.disabled = true;
-      ui.updateBtn.textContent = '確認中…';
+      ui.updateBtn.textContent = '更新を確認中…';
+      if (ui.updateHelp) ui.updateHelp.textContent = '公開先のバージョンとService Workerを確認しています。';
       try {
-        if (swRegistration) {
-          await swRegistration.update();
-          // 更新workerのインストールが進行中なら、installedになるまで待ちます。
-          const installing = swRegistration.installing;
-          if (installing) {
-            await new Promise(resolve => {
-              const finish = () => {
-                if (['installed', 'activated', 'redundant'].includes(installing.state)) {
-                  installing.removeEventListener('statechange', finish);
-                  resolve();
-                }
-              };
-              installing.addEventListener('statechange', finish);
-              finish();
-              window.setTimeout(resolve, 15000);
-            });
+        // version.jsonはURLキャッシュを無効化して公開版と端末版を比較します。
+        const publishedVersion = await fetchPublishedVersion();
+        let registration = swRegistration;
+        if ('serviceWorker' in navigator && secureContext) {
+          registration = registration || await navigator.serviceWorker.getRegistration() ||
+            await navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' });
+          swRegistration = registration;
+          await registration.update();
+          if (registration.installing) {
+            const installedState = await waitForWorkerState(registration.installing, ['installed', 'activated']);
+            if (installedState === 'installed') {
+              // waiting workerは以下でユーザー操作により有効化します。
+            }
+          }
+          if (registration.waiting) {
+            ui.updateBtn.textContent = '更新を適用中…';
+            refreshingForUpdate = true;
+            await activateWaitingWorker(registration);
+            location.reload();
+            return;
           }
         }
-        const waiting = swRegistration && swRegistration.waiting;
-        if (waiting && navigator.serviceWorker.controller) {
-          refreshingForUpdate = true;
-          ui.updateBtn.textContent = '更新中…';
-          waiting.postMessage({ type: 'SKIP_WAITING' });
-          // controllerchangeが起きないブラウザ向けの保険です。
-          window.setTimeout(() => {
-            if (refreshingForUpdate) location.reload();
-          }, 5000);
-        } else {
-          // Service Workerに変更がなくても、Network-firstで公開済みの最新ファイルを取得します。
-          location.reload();
+
+        const versionOrder = compareVersions(publishedVersion, APP_VERSION);
+        if (versionOrder > 0) {
+          // 公開版番号だけが進み、SWの更新が検出されない場合の復旧経路。
+          // アプリ用キャッシュだけを削除し、localStorage上の学習データには触れません。
+          await clearApplicationCaches();
+          const refreshedUrl = new URL(location.href);
+          refreshedUrl.searchParams.set('app-refresh', `${publishedVersion}-${Date.now()}`);
+          location.replace(refreshedUrl.href);
+          return;
         }
-      } catch (error) {
-        console.warn('Update check failed:', error);
+        if (versionOrder < 0) {
+          throw new Error(`公開側の版（v${publishedVersion}）が端末側（v${APP_VERSION}）より古い状態です。配布先に最新の一式が配置されているか確認してください。`);
+        }
+
         ui.updateBtn.disabled = false;
         ui.updateBtn.textContent = '更新を確認';
-        alert('更新を確認できませんでした。インターネット接続を確認して、もう一度お試しください。');
+        if (ui.updateHelp) ui.updateHelp.textContent = `現在のバージョン（v${APP_VERSION}）は公開最新版です。ブックマーク・設定・学習履歴は端末内に保存されています。`;
+        alert(`更新はありません。現在のバージョンは v${APP_VERSION} です。`);
+      } catch (error) {
+        console.error('Update check failed:', error);
+        showUpdateError(`更新を確認できませんでした。インターネット接続と公開先のversion.jsonを確認してください。詳細: ${error.message}`);
       }
     });
+
     window.addEventListener('popstate', event => {
       if (!hasValidLoginSession()) {
         ui.workspace.classList.add('hidden');
@@ -470,8 +548,6 @@
       const count = parseRows(ui.sharedDataInput.value).length;
       alert(count ? `${count}件のデータを読み込みました。` : '読み込み失敗: 3列のデータが見つかりません。');
     });
-    $('loadJsonBtn').addEventListener('click', () => ui.jsonDataFile.click());
-    ui.jsonDataFile.addEventListener('change', () => { if (ui.jsonDataFile.files?.[0]) loadJsonFile(ui.jsonDataFile.files[0]); });
     ui.sharedDataInput.addEventListener('input', () => { persistSettings(); updateDataStatus(); });
     ui.patternList.querySelectorAll('input').forEach(cb => cb.addEventListener('change', () => { persistSettings(); if (framesReady.quiz || framesReady.flash) setSetupInFrames(); }));
     ui.bookmarkedOnly.addEventListener('change', persistSettings);

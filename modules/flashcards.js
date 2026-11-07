@@ -42,13 +42,15 @@ function bookmarkColorMeta(color){ return COLOR_META[COLOR_OPTIONS.includes(colo
 function applyBookmarkButtonColor(button, color, saved){
   if(!button) return;
   const safeColor = COLOR_OPTIONS.includes(color) ? color : 'sky';
-  const meta = bookmarkColorMeta(safeColor);
-  button.dataset.bookmarkColor = safeColor;
+  const meta = saved
+    ? bookmarkColorMeta(safeColor)
+    : { accent:'#94a3b8', soft:'rgba(148,163,184,.10)', border:'rgba(148,163,184,.34)' };
+  // 未保存は必ず同じグレーの輪郭アイコン。直前に選んだ色を未保存状態へ持ち越しません。
+  button.dataset.bookmarkColor = saved ? safeColor : 'none';
   button.setAttribute('aria-pressed', saved ? 'true' : 'false');
   button.style.setProperty('--bookmark', meta.accent);
   button.style.setProperty('--bookmarkSoft', meta.soft);
   button.style.setProperty('--bookmarkBorder', meta.border);
-  // SVG側にも色を直接指定し、端末・ブラウザのCSS変数差で既定色に戻るのを防ぎます。
   const svg = button.querySelector('svg');
   if(svg){
     svg.style.stroke = meta.accent;
@@ -88,6 +90,7 @@ const els = {
   bookmarkMenuSwatches:document.getElementById('bookmarkMenuSwatches'),
   bookmarkMenuCloseBtn:document.getElementById('bookmarkMenuCloseBtn'),
   bookmarkMenuSaveBtn:document.getElementById('bookmarkMenuSaveBtn'),
+  bookmarkMenuRemoveBtn:document.getElementById('bookmarkMenuRemoveBtn'),
   bookmarkNameEnabled:document.getElementById('bookmarkNameEnabled'),
   bookmarkNameInput:document.getElementById('bookmarkNameInput'),
   bookmarkCountBadge:document.getElementById('bookmarkCountBadge'),
@@ -319,6 +322,7 @@ function openBookmarkMenu(){
   state.bookmarkDraftColor = COLOR_OPTIONS.includes(bm?.color) ? bm.color : (COLOR_OPTIONS.includes(state.bookmarkDraftColor) ? state.bookmarkDraftColor : 'sky');
   state.bookmarkDraftName = bm?.name || '';
   state.bookmarkUseName = !!state.bookmarkDraftName;
+  els.bookmarkMenuRemoveBtn.hidden = !bm;
   els.bookmarkNameEnabled.checked = state.bookmarkUseName;
   els.bookmarkNameInput.value = state.bookmarkDraftName;
   els.bookmarkNameInput.disabled = !state.bookmarkUseName;
@@ -347,6 +351,21 @@ function saveBookmarkFromMenu(){
   closeBookmarkMenu();
   updateBookmarkUI();
   renderHome();
+  syncParentBookmarkList();
+}
+
+function removeCurrentBookmarkFromCard(){
+  if(!state.currentQuestion) return;
+  const { item, pattern } = state.currentQuestion;
+  const existing = getBookmark(item, pattern.key);
+  if(!existing) return;
+  removeBookmark(item, pattern.key);
+  state.bookmarkDraftName = '';
+  state.bookmarkUseName = false;
+  closeBookmarkMenu();
+  updateBookmarkUI();
+  renderHome();
+  syncParentBookmarkList();
 }
 
 function updateBookmarkUI(){
@@ -358,8 +377,10 @@ function updateBookmarkUI(){
   applyBookmarkButtonColor(els.bookmarkBtn, color, saved);
   applyBookmarkButtonColor(els.bookmarkBtnBack, color, saved);
   const nameLabel = bm?.name ? `「${bm.name}」` : '';
-  els.bookmarkBtn.title = saved ? `保存済み ${nameLabel}（${meta.label}）` : '未保存';
-  els.bookmarkBtnBack.title = saved ? `保存済み ${nameLabel}（${meta.label}）` : '未保存';
+  els.bookmarkBtn.title = saved ? `保存済み ${nameLabel}（${meta.label}）。クリックして色変更または解除` : '未保存。クリックしてブックマークを追加';
+  els.bookmarkBtnBack.title = els.bookmarkBtn.title;
+  els.bookmarkBtn.setAttribute('aria-label', saved ? 'ブックマーク済み。設定を開く' : 'ブックマークを追加');
+  els.bookmarkBtnBack.setAttribute('aria-label', els.bookmarkBtn.getAttribute('aria-label'));
   if(saved && !state.bookmarkMenuOpen) state.bookmarkDraftColor = color;
   if(state.bookmarkMenuOpen) updateBookmarkSwatchSelection();
   else renderBookmarkMenu();
@@ -757,6 +778,7 @@ els.bookmarkBtnBack.addEventListener('click', (e)=>{
 });
 els.bookmarkMenuCloseBtn.addEventListener('click', closeBookmarkMenu);
 els.bookmarkMenuSaveBtn.addEventListener('click', saveBookmarkFromMenu);
+els.bookmarkMenuRemoveBtn.addEventListener('click', removeCurrentBookmarkFromCard);
 els.bookmarkMenuSwatches.addEventListener('click', event=>{
   const button = event.target.closest('button.swatch[data-color]');
   if(!button || !els.bookmarkMenuSwatches.contains(button)) return;

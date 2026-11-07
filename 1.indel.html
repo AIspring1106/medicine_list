@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0ea5e9">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="医薬品リスト">
+  <meta name="apple-mobile-web-app-title" content="医薬品リスト v1.2.4">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
@@ -55,15 +55,20 @@
       <div class="headerActions">
         <span class="pill">PWA / オフライン対応</span>
         <button class="btn secondary small hidden" id="installBtn" type="button">アプリをインストール</button>
-        <button class="btn secondary small" id="updateBtn" type="button" title="GitHub Pages上の最新版を確認して再読み込みします">更新を確認</button>
         <button class="btn secondary small" id="logoutBtn" type="button">ログアウト</button>
       </div>
     </header>
 
     <section id="modeScreen" class="screen active">
-      <div class="card" style="margin-bottom:16px">
-        <h2>学習モードを選択</h2>
-        <p class="sub">利用するモードを選択してください。次の共通メニューでデータと出題設定を行います。</p>
+      <div class="card modeHomeToolbar" style="margin-bottom:16px">
+        <div class="modeHomeIntro">
+          <h2>学習モードを選択</h2>
+          <p class="sub">利用するモードを選択してください。次の共通メニューでデータと出題設定を行います。</p>
+        </div>
+        <div class="updateArea">
+          <button class="btn secondary small" id="updateBtn" type="button" title="公開先の最新版を確認し、必要な更新を適用します">更新を確認</button>
+          <p id="updateHelp" class="footerNote" role="status">更新確認にはインターネット接続が必要です。更新が反映されない場合、保存したいデータがあるときは前もって別途保存した上で、ブラウザのサイトデータをクリアしてから再読み込みしてください。サイトデータを削除すると、この端末内のブックマーク・設定・学習履歴も消去されます。なお、全データの一括バックアップ機能はありません。</p>
+        </div>
       </div>
       <div class="grid">
         <div class="card modeCard">
@@ -91,8 +96,6 @@
           <div class="row status">
             <span class="muted" id="loadStatus">未読み込み</span>
             <button class="btn secondary" id="loadDataBtn" type="button">読み込む</button>
-            <button class="btn secondary" id="loadJsonBtn" type="button">JSONを読み込む</button>
-            <input class="inlineFile" id="jsonDataFile" type="file" accept=".json,application/json">
           </div>
         </div>
         <div class="card">

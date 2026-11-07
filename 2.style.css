@@ -17,3 +17,12 @@ textarea{width:100%;min-height:210px;resize:vertical;border:1px solid #cbd9ea;bo
 .btn.small{padding:8px 12px;font-size:.88rem}
 .inlineFile{display:none}
 @media(max-width:640px){.loginCard{margin:3vh auto 14px}.loginForm{flex-direction:column}.loginForm .btn{width:100%}.headerActions{width:100%}}
+
+/* ホーム画面（モード選択）だけに更新操作を配置 */
+.modeHomeToolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.modeHomeIntro{flex:1 1 360px}
+.modeHomeIntro h2{margin:0 0 8px}
+.modeHomeIntro .sub{margin:0}
+.updateArea{flex:0 1 390px;min-width:min(100%,280px)}
+.updateArea .btn{min-width:150px}
+.updateArea .footerNote{margin:8px 0 0;font-size:.78rem;line-height:1.55}

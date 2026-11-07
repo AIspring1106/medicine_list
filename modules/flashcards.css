@@ -153,6 +153,9 @@
     .bookmarkBtn.saved{background:var(--bookmarkSoft);border-color:var(--bookmarkBorder,rgba(245,158,11,.35))}
     .bookmarkBtn svg{width:24px;height:24px;fill:none;stroke:var(--bookmark);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
     .bookmarkBtn.saved svg{fill:var(--bookmark);stroke:var(--bookmark)}
+    .bookmarkBtn:not(.saved){background:#f1f5f9;border-color:#cbd5e1}
+    .bookmarkBtn:not(.saved) svg{fill:none!important;stroke:#94a3b8!important}
+    .bookmarkBtn[data-bookmark-color="none"]{--bookmark:#94a3b8;--bookmarkSoft:rgba(148,163,184,.10);--bookmarkBorder:rgba(148,163,184,.34)}
 
     /* カードの3D transform配下に置くと、スウォッチが背面に回り
        クリックがカードへ透過する環境があるため、JSでbody直下へ移すモーダルにします。 */
@@ -175,7 +178,10 @@
     }
     .bookmarkMenuTitle{font-weight:800;margin:0 0 10px;font-size:.95rem}
     .bookmarkMenuNote{margin:0 0 12px;color:var(--muted);font-size:.84rem;line-height:1.5}
-    .bookmarkMenuActions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
+    .bookmarkMenuActions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
+    .bookmarkMenuActionSpacer{flex:1 1 auto}
+    .bookmarkRemoveAction{padding:10px 12px;font-size:.86rem}
+    .bookmarkRemoveAction[hidden]{display:none!important}
 
     .colorSwatches{display:flex;gap:8px;flex-wrap:wrap}
     .swatch{

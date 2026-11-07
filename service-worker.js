@@ -1,9 +1,8 @@
 /*
- * service-worker.js
- * オンライン時は常にサーバーの最新ファイルを優先し、取得できない場合だけキャッシュを使用します。
- * 新しいService Workerは待機状態になり、画面の「更新を適用」操作で切り替わります。
+ * service-worker.js - 医薬品リスト v1.2.4
+ * オンラインでは常にサーバーの最新レスポンスを再検証し、通信不能時のみキャッシュへフォールバックします。
  */
-const CACHE_NAME = 'medicine-learning-pwa-v1.2.0';
+const CACHE_NAME = 'medicine-learning-pwa-v1.2.4';
 const CACHE_PREFIX = 'medicine-learning-pwa-';
 const CORE_ASSETS = [
   './', './index.html', './1.indel.html', './2.style.css', './3.app.js', './database.js',
@@ -16,13 +15,23 @@ const CORE_ASSETS = [
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(CORE_ASSETS);
-    // skipWaitingはここでは呼ばず、利用者が更新を適用するまで現行画面を維持します。
+    // HTTPキャッシュを介さず新しいアプリシェルを取得します。
+    const requests = CORE_ASSETS.map(path => new Request(path, { cache: 'reload' }));
+    const results = await Promise.allSettled(requests.map(async request => {
+      const response = await fetch(request);
+      if (!response.ok) throw new Error(`Precache failed: ${request.url} (${response.status})`);
+      await cache.put(request, response);
+    }));
+    const failures = results.filter(result => result.status === 'rejected');
+    if (failures.length) {
+      // コアHTML/JSの取得に失敗した場合はインストールを失敗させ、稼働中のworkerを維持します。
+      throw new Error(`App shell precache failed (${failures.length}/${requests.length})`);
+    }
   })());
 });
 
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
@@ -41,13 +50,19 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // 版番号は必ずネットワークから取得し、Service Workerキャッシュへ保存しません。
+  if (url.pathname.endsWith('/version.json')) {
+    event.respondWith(fetch(new Request(request, { cache: 'no-store' })));
+    return;
+  }
+
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
     try {
-      // no-cacheでブラウザHTTPキャッシュも再検証し、GitHub Pages上の更新を取り込みます。
-      const freshRequest = new Request(request, { cache: 'no-cache' });
+      // reload/no-storeでブラウザーHTTPキャッシュも再検証します。
+      const freshRequest = new Request(request, { cache: 'no-store' });
       const response = await fetch(freshRequest);
-      if (response && response.ok && response.type === 'basic') {
+      if (response && response.ok && (response.type === 'basic' || response.type === 'default')) {
         await cache.put(request, response.clone());
       }
       return response;
