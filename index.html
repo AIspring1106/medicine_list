@@ -6,20 +6,20 @@
   <meta name="theme-color" content="#0ea5e9">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="医薬品リスト v1.2.5">
+  <meta name="apple-mobile-web-app-title" content="医薬品リスト v1.2.6">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <link rel="stylesheet" href="./2.style.css">
-  <title>医薬品リスト v1.2.5</title>
+  <title>医薬品リスト v1.2.6</title>
 </head>
 <body>
 <div class="app">
   <section id="loginScreen" class="screen active">
     <div class="card loginCard">
       <div class="brand">
-        <h1>医薬品リスト v1.2.5</h1>
+        <h1>医薬品リスト v1.2.6</h1>
         <p>医薬品クイズ・暗記カード 統合版</p>
       </div>
       <div class="divider"></div>
@@ -31,6 +31,10 @@
       </form>
       <p id="loginError" class="loginError" role="alert"></p>
       <p id="passwordSetupNotice" class="footerNote"></p>
+      <div class="loginUpdateArea">
+        <button class="btn secondary small" id="loginUpdateBtn" type="button">更新を確認</button>
+        <p id="loginUpdateHelp" class="footerNote" role="status">ログインできない場合も、ここからアプリの更新を確認できます。更新後も端末内の学習データは保持されます。</p>
+      </div>
       <div class="divider"></div>
       <p class="tiny">このログインは同一端末・同一サイト内での簡易的な利用制限です。パスワードは公開されるJavaScriptに含まれるため、機密情報を保護する認証ではありません。</p>
     </div>
@@ -49,7 +53,7 @@
   <div id="workspace" class="hidden">
     <header>
       <div class="brand">
-        <h1>医薬品リスト v1.2.5</h1>
+        <h1>医薬品リスト v1.2.6</h1>
         <p>医薬品クイズ・暗記カード 統合版</p>
       </div>
       <div class="headerActions">
@@ -67,7 +71,7 @@
         </div>
         <div class="updateArea">
           <button class="btn secondary small" id="updateBtn" type="button" title="公開先の最新版を確認し、必要な更新を適用します">更新を確認</button>
-          <p id="updateHelp" class="footerNote" role="status">更新確認にはインターネット接続が必要です。更新が反映されない場合、保存したいデータがあるときは前もって別途保存した上で、ブラウザのサイトデータをクリアしてから再読み込みしてください。サイトデータを削除すると、この端末内のブックマーク・設定・学習履歴も消去されます。なお、全データの一括バックアップ機能はありません。</p>
+          <p id="updateHelp" class="footerNote" role="status">更新確認にはインターネット接続が必要です。新しいアプリ一式の取得が完了してから切り替えます。取得に失敗した場合は旧版と端末内データを維持します。通常の更新でサイトデータを削除する必要はありません。</p>
         </div>
       </div>
       <div class="grid">
@@ -173,6 +177,7 @@
     <section id="flashFrameWrap" class="frameWrap"><iframe id="flashFrame" class="appFrame" title="暗記カード"></iframe></section>
   </div>
 </div>
+<script src="./data/config.local.js" onerror="this.remove()"></script>
 <script src="./data/config.js"></script>
 <script src="./database.js"></script>
 <script src="./3.app.js" defer></script>

@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const APP_VERSION = '1.2.5';
+  const APP_VERSION = '1.2.6';
   const PATTERN_KEYS = ['sales_to_generic','generic_to_sales','sales_to_effect','effect_to_sales','generic_to_effect','effect_to_generic'];
   const config = window.APP_CONFIG || {};
   const ui = {};
@@ -13,9 +13,9 @@
   let workspaceInitialized = false;
   let deferredInstallPrompt = null;
   let swRegistration = null;
-  let refreshingForUpdate = false;
   const ROUTE_MARKER = 'medicine-learning-pwa';
   const AUTH_SESSION_KEY = 'authSession';
+  const AUTH_CREDENTIAL_KEY = 'authPasswordCredential';
 
   function cacheElements() {
     [
@@ -23,7 +23,7 @@
       'modeScreen','menuScreen','quizFrameWrap','flashFrameWrap','quizFrame','flashFrame',
       'sharedDataInput','loadStatus','patternList','modeBadge','startModeBtn','flashcardOnlySetting',
       'bookmarkedOnly','quizOrderMode','flashcardOrderMode','quizOrderSetting','flashcardOrderSetting','quizWrongOptionsCard','reviewAllWrongsBtn','bookmarkList','bookmarkCount','wrongList','wrongCount','historyList','usageText',
-      'installBtn','updateBtn','updateHelp'
+      'installBtn','updateBtn','updateHelp','loginUpdateBtn','loginUpdateHelp'
     ].forEach(id => ui[id] = $(id));
   }
   function esc(value) {
@@ -60,6 +60,60 @@
   function getSessionDays() {
     const value = Number(config.LOGIN_SESSION_DAYS);
     return Number.isFinite(value) && value > 0 ? Math.min(Math.floor(value), 365) : 30;
+  }
+  function getPasswordRevision() {
+    return String(config.AUTH_PASSWORD_REVISION || '1');
+  }
+  async function hashPassword(value) {
+    if (!window.crypto || !window.crypto.subtle || typeof TextEncoder === 'undefined') return null;
+    const data = new TextEncoder().encode(String(value));
+    const digest = await window.crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+  function safeEqual(left, right) {
+    const a = String(left || '');
+    const b = String(right || '');
+    if (a.length !== b.length) return false;
+    let diff = 0;
+    for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    return diff === 0;
+  }
+  function hasUsableCredential() {
+    const saved = window.AppDB.get(AUTH_CREDENTIAL_KEY, null);
+    const expected = String(config.SHARED_PASSWORD || '');
+    if (saved && saved.hash) {
+      if (saved.revision === getPasswordRevision()) return true;
+      // 古いrevisionを新しい既定値で意図せず上書きしないよう、
+      // 管理者が明示的にPASSWORD_IS_DEFAULT=falseへ変更した場合だけ再設定を許可します。
+      return config.PASSWORD_IS_DEFAULT !== true && !!expected && expected !== 'CHANGE-THIS-PASSWORD';
+    }
+    return !!expected && expected !== 'CHANGE-THIS-PASSWORD';
+  }
+  async function verifyPassword(entered) {
+    const revision = getPasswordRevision();
+    const saved = window.AppDB.get(AUTH_CREDENTIAL_KEY, null);
+    const enteredHash = await hashPassword(entered);
+
+    if (saved && saved.hash && saved.revision === revision && enteredHash) {
+      return safeEqual(enteredHash, saved.hash);
+    }
+    if (saved && saved.hash && saved.revision !== revision && config.PASSWORD_IS_DEFAULT === true) {
+      return false;
+    }
+
+    const expected = String(config.SHARED_PASSWORD || '');
+    if (!expected || expected === 'CHANGE-THIS-PASSWORD' || entered !== expected) return false;
+
+    // 初回の成功ログイン時に照合用ハッシュを端末へ保存します。
+    // 以後はアプリのconfig.jsが更新されても同じ認証情報を維持できます。
+    if (enteredHash) {
+      window.AppDB.set(AUTH_CREDENTIAL_KEY, {
+        revision,
+        hash: enteredHash,
+        savedAt: new Date().toISOString()
+      });
+    }
+    return true;
   }
   function createLoginSession() {
     const now = Date.now();
@@ -299,26 +353,38 @@
     a.href = url; a.download = `医薬品クイズ_誤答一覧_${stamp}.csv`;
     document.body.appendChild(a); a.click(); a.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  function authenticate(event) {
+  async function authenticate(event) {
     event.preventDefault();
-    const expected = String(config.SHARED_PASSWORD || '');
     const entered = ui.commonPassword.value;
-    if (!expected || expected === 'CHANGE-THIS-PASSWORD') {
-      ui.loginError.textContent = '管理者が data/config.js の SHARED_PASSWORD を変更してください。';
-      return;
-    }
-    if (entered !== expected) {
-      ui.loginError.textContent = 'パスワードが正しくありません。';
-      ui.commonPassword.select();
-      return;
-    }
-    createLoginSession();
-    ui.loginScreen.classList.remove('active');
-    ui.workspace.classList.remove('hidden');
+    const submitButton = ui.loginForm.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    submitButton.textContent = '確認中…';
     ui.loginError.textContent = '';
-    ui.commonPassword.value = '';
-    history.replaceState({ app: ROUTE_MARKER, page: 'mode' }, '', location.href);
-    initializeWorkspace();
+    try {
+      if (!hasUsableCredential()) {
+        ui.loginError.textContent = '管理者設定が見つかりません。data/config.local.js に従来の共通パスワードを設定してください。';
+        return;
+      }
+      const valid = await verifyPassword(entered);
+      if (!valid) {
+        ui.loginError.textContent = 'パスワードが正しくありません。更新後に設定が初期化された可能性がある場合は、管理者に従来のパスワード設定を確認してください。';
+        ui.commonPassword.select();
+        return;
+      }
+      createLoginSession();
+      ui.loginScreen.classList.remove('active');
+      ui.workspace.classList.remove('hidden');
+      ui.loginError.textContent = '';
+      ui.commonPassword.value = '';
+      history.replaceState({ app: ROUTE_MARKER, page: 'mode' }, '', location.href);
+      initializeWorkspace();
+    } catch (error) {
+      console.error('Authentication failed:', error);
+      ui.loginError.textContent = '認証処理に失敗しました。HTTPS接続で再読み込みしてからお試しください。';
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = 'ログイン';
+    }
   }
   function logout() {
     clearLoginSession();
@@ -414,14 +480,6 @@
     });
   }
 
-  async function clearApplicationCaches() {
-    if (!('caches' in window)) return;
-    const keys = await caches.keys();
-    await Promise.all(keys
-      .filter(key => key.startsWith('medicine-learning-pwa-'))
-      .map(key => caches.delete(key)));
-  }
-
   async function activateWaitingWorker(registration) {
     const waiting = registration?.waiting;
     if (!waiting) return false;
@@ -433,13 +491,77 @@
     return true;
   }
 
+  function setUpdateButtons(disabled, label) {
+    [ui.updateBtn, ui.loginUpdateBtn].filter(Boolean).forEach(button => {
+      button.disabled = !!disabled;
+      button.textContent = label;
+    });
+  }
+  function setUpdateMessage(message) {
+    [ui.updateHelp, ui.loginUpdateHelp].filter(Boolean).forEach(node => { node.textContent = message; });
+  }
   function showUpdateError(message) {
-    ui.updateBtn.disabled = false;
-    ui.updateBtn.textContent = '更新を確認';
-    if (ui.updateHelp) {
-      ui.updateHelp.textContent = `${message} 更新が反映されない場合、保存したいデータがあるときは前もって別途保存した上で、ブラウザのサイトデータをクリアしてから再読み込みしてください。サイトデータを削除すると、この端末内のブックマーク・設定・学習履歴も消去されます。`;
-    }
+    setUpdateButtons(false, '更新を確認');
+    setUpdateMessage(`${message} 学習データは端末内に保存されています。サイトデータの削除は行わず、まずオンライン状態で再試行してください。`);
     alert(message);
+  }
+
+  async function checkAndApplyUpdate() {
+    setUpdateButtons(true, '更新を確認中…');
+    setUpdateMessage('公開版と更新ファイル一式を確認しています。ダウンロードが完了するまで画面を閉じないでください。');
+    try {
+      const publishedVersion = await fetchPublishedVersion();
+      const versionOrder = compareVersions(publishedVersion, APP_VERSION);
+      if (versionOrder < 0) {
+        throw new Error(`公開側の版（v${publishedVersion}）が端末側（v${APP_VERSION}）より古い状態です。GitHub Pagesにv${APP_VERSION}の一式が公開されているか確認してください。`);
+      }
+
+      const secureContext = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      if ('serviceWorker' in navigator && secureContext) {
+        let registration = swRegistration || await navigator.serviceWorker.getRegistration();
+        if (!registration) registration = await navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' });
+        swRegistration = registration;
+        const previousController = navigator.serviceWorker.controller;
+        await registration.update();
+
+        // installイベントがコア資産すべてを取得し終えるまで待機します。
+        let installing = registration.installing;
+        const installedState = installing
+          ? await waitForWorkerState(installing, ['installed', 'activated'], 90000)
+          : null;
+        if (registration.waiting) {
+          setUpdateButtons(true, '更新を適用中…');
+          setUpdateMessage('新しいアプリ一式の取得が完了しました。アプリを切り替えています。');
+          await activateWaitingWorker(registration);
+          location.reload();
+          return;
+        }
+        // Service Workerが初回登録として直接activateしたケースも反映します。
+        if (versionOrder > 0 && installedState === 'activated') {
+          await waitForControllerChange(previousController, 10000);
+          location.reload();
+          return;
+        }
+
+        if (versionOrder > 0) {
+          throw new Error(`公開版 v${publishedVersion} を確認しましたが、新版の完全な取得を確認できませんでした。配信が完了してから、もう一度「更新を確認」を押してください。旧版のキャッシュと学習データは保持しています。`);
+        }
+      } else if (versionOrder > 0) {
+        // Service Worker非対応環境では通常の再読み込みへフォールバックします。
+        const refreshedUrl = new URL(location.href);
+        refreshedUrl.searchParams.set('app-refresh', `${publishedVersion}-${Date.now()}`);
+        location.replace(refreshedUrl.href);
+        return;
+      }
+
+      setUpdateButtons(false, '更新を確認');
+      const message = `現在のバージョン（v${APP_VERSION}）は公開最新版です。学習履歴・ブックマーク・設定は保持されています。`;
+      setUpdateMessage(message);
+      alert(`更新はありません。現在のバージョンは v${APP_VERSION} です。`);
+    } catch (error) {
+      console.error('Update check failed:', error);
+      showUpdateError(`更新を確認できませんでした。インターネット接続とGitHub Pagesの公開状態を確認してください。詳細: ${error.message}`);
+    }
   }
 
   function registerPwa() {
@@ -448,26 +570,40 @@
       navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).then(async registration => {
         swRegistration = registration;
         if (registration.waiting && navigator.serviceWorker.controller) {
-          ui.updateBtn.textContent = '更新を確認（更新あり）';
+          setUpdateButtons(false, '更新を適用');
+          setUpdateMessage('新しいアプリ一式の取得が完了しています。ログイン前でも更新を適用できます。');
         }
         registration.addEventListener('updatefound', () => {
           const installing = registration.installing;
           if (!installing) return;
-          installing.addEventListener('statechange', () => {
-            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-              ui.updateBtn.textContent = '更新を確認（更新あり）';
+          installing.addEventListener('statechange', async () => {
+            if (installing.state !== 'installed' || !navigator.serviceWorker.controller) return;
+            // ログイン画面で待機している場合だけ、自動で切り替えて再読み込みします。
+            // 学習中の画面を突然リロードしないため、ログイン後は手動適用にします。
+            if (ui.loginScreen.classList.contains('active') && ui.workspace.classList.contains('hidden')) {
+              try {
+                setUpdateButtons(true, '更新を適用中…');
+                setUpdateMessage('新版の全ファイル取得が完了しました。更新を適用しています。');
+                await activateWaitingWorker(registration);
+                location.reload();
+              } catch (error) {
+                console.warn('Automatic update activation failed:', error);
+                setUpdateButtons(false, '更新を適用');
+              }
+            } else {
+              setUpdateButtons(false, '更新を適用');
+              setUpdateMessage('新しいアプリ一式のダウンロードが完了しました。「更新を適用」を押すと切り替わります。');
             }
           });
         });
-        // 初回表示時にも更新確認を行います。失敗してもアプリの利用は継続できます。
         try { await registration.update(); }
         catch (error) { console.warn('Initial Service Worker update check failed:', error); }
       }).catch(err => {
         console.warn('Service Worker registration failed:', err);
-        if (ui.updateHelp) ui.updateHelp.textContent = 'この環境ではService Workerを登録できません。HTTPSまたはlocalhostで開いていることを確認してください。更新が反映されない場合は、保存データを別途保存したうえでサイトデータをクリアして再読み込みしてください。';
+        setUpdateMessage('Service Workerを登録できません。HTTPSまたはlocalhostで開いていることを確認してください。');
       });
-    } else if (ui.updateHelp) {
-      ui.updateHelp.textContent = 'この環境ではService Workerによる自動更新を利用できません。HTTPSまたはlocalhostで開いてください。更新が反映されない場合は、保存データを別途保存したうえでサイトデータをクリアして再読み込みしてください。';
+    } else {
+      setUpdateMessage('この環境では自動更新を利用できません。HTTPSまたはlocalhostで開いてください。');
     }
 
     window.addEventListener('beforeinstallprompt', event => {
@@ -483,57 +619,8 @@
       ui.installBtn.classList.add('hidden');
     });
 
-    ui.updateBtn.addEventListener('click', async () => {
-      ui.updateBtn.disabled = true;
-      ui.updateBtn.textContent = '更新を確認中…';
-      if (ui.updateHelp) ui.updateHelp.textContent = '公開先のバージョンとService Workerを確認しています。';
-      try {
-        // version.jsonはURLキャッシュを無効化して公開版と端末版を比較します。
-        const publishedVersion = await fetchPublishedVersion();
-        let registration = swRegistration;
-        if ('serviceWorker' in navigator && secureContext) {
-          registration = registration || await navigator.serviceWorker.getRegistration() ||
-            await navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' });
-          swRegistration = registration;
-          await registration.update();
-          if (registration.installing) {
-            const installedState = await waitForWorkerState(registration.installing, ['installed', 'activated']);
-            if (installedState === 'installed') {
-              // waiting workerは以下でユーザー操作により有効化します。
-            }
-          }
-          if (registration.waiting) {
-            ui.updateBtn.textContent = '更新を適用中…';
-            refreshingForUpdate = true;
-            await activateWaitingWorker(registration);
-            location.reload();
-            return;
-          }
-        }
-
-        const versionOrder = compareVersions(publishedVersion, APP_VERSION);
-        if (versionOrder > 0) {
-          // 公開版番号だけが進み、SWの更新が検出されない場合の復旧経路。
-          // アプリ用キャッシュだけを削除し、localStorage上の学習データには触れません。
-          await clearApplicationCaches();
-          const refreshedUrl = new URL(location.href);
-          refreshedUrl.searchParams.set('app-refresh', `${publishedVersion}-${Date.now()}`);
-          location.replace(refreshedUrl.href);
-          return;
-        }
-        if (versionOrder < 0) {
-          throw new Error(`公開側の版（v${publishedVersion}）が端末側（v${APP_VERSION}）より古い状態です。配布先に最新の一式が配置されているか確認してください。`);
-        }
-
-        ui.updateBtn.disabled = false;
-        ui.updateBtn.textContent = '更新を確認';
-        if (ui.updateHelp) ui.updateHelp.textContent = `現在のバージョン（v${APP_VERSION}）は公開最新版です。ブックマーク・設定・学習履歴は端末内に保存されています。`;
-        alert(`更新はありません。現在のバージョンは v${APP_VERSION} です。`);
-      } catch (error) {
-        console.error('Update check failed:', error);
-        showUpdateError(`更新を確認できませんでした。インターネット接続と公開先のversion.jsonを確認してください。詳細: ${error.message}`);
-      }
-    });
+    ui.updateBtn.addEventListener('click', checkAndApplyUpdate);
+    ui.loginUpdateBtn.addEventListener('click', checkAndApplyUpdate);
 
     window.addEventListener('popstate', event => {
       if (!hasValidLoginSession()) {
@@ -608,7 +695,7 @@
     ui.passwordSetupNotice.textContent = config.PASSWORD_IS_DEFAULT
       ? '初期設定のままです。管理者は data/config.js の SHARED_PASSWORD を変更してから配布してください。'
       : '';
-    if (hasValidLoginSession() && config.SHARED_PASSWORD && config.SHARED_PASSWORD !== 'CHANGE-THIS-PASSWORD') {
+    if (hasValidLoginSession() && hasUsableCredential()) {
       ui.loginScreen.classList.remove('active');
       ui.workspace.classList.remove('hidden');
       history.replaceState({ app: ROUTE_MARKER, page: 'mode' }, '', location.href);

@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "医薬品リスト v1.2.5",
-  "short_name": "医薬品リスト v1.2.5",
-  "description": "医薬品クイズと暗記カードによる学習アプリ v1.2.5",
+  "name": "医薬品リスト v1.2.6",
+  "short_name": "医薬品リスト v1.2.6",
+  "description": "医薬品クイズと暗記カードによる学習アプリ v1.2.6",
   "lang": "ja",
   "start_url": "./index.html",
   "scope": "./",

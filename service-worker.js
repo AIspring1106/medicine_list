@@ -1,9 +1,11 @@
 /*
- * service-worker.js - 医薬品リスト v1.2.5
- * オンラインでは常にサーバーの最新レスポンスを再検証し、通信不能時のみキャッシュへフォールバックします。
+ * service-worker.js - 医薬品リスト v1.2.6
+ * 新版のコア資産をすべて取得できた場合だけ更新を有効化します。
+ * 旧版キャッシュは新版のインストール・有効化が成功するまで維持します。
  */
-const CACHE_NAME = 'medicine-learning-pwa-v1.2.5';
-const CACHE_PREFIX = 'medicine-learning-pwa-';
+const APP_VERSION = '1.2.6';
+const CACHE_NAME = `medicine-learning-pwa-v${APP_VERSION}`;
+const CACHE_PREFIX = 'medicine-learning-pwa-v';
 const CORE_ASSETS = [
   './', './index.html', './1.indel.html', './2.style.css', './3.app.js', './database.js',
   './data/config.js', './data/medicines.json', './data/questions.json', './data/flashcards.json',
@@ -14,19 +16,29 @@ const CORE_ASSETS = [
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
+    // 部分キャッシュが残らないよう、今回のキャッシュを作り直します。
+    await caches.delete(CACHE_NAME);
     const cache = await caches.open(CACHE_NAME);
-    // HTTPキャッシュを介さず新しいアプリシェルを取得します。
-    const requests = CORE_ASSETS.map(path => new Request(path, { cache: 'reload' }));
-    const results = await Promise.allSettled(requests.map(async request => {
-      const response = await fetch(request);
-      if (!response.ok) throw new Error(`Precache failed: ${request.url} (${response.status})`);
-      await cache.put(request, response);
-    }));
-    const failures = results.filter(result => result.status === 'rejected');
-    if (failures.length) {
-      // コアHTML/JSの取得に失敗した場合はインストールを失敗させ、稼働中のworkerを維持します。
-      throw new Error(`App shell precache failed (${failures.length}/${requests.length})`);
+    try {
+      const results = await Promise.allSettled(CORE_ASSETS.map(async path => {
+        const url = new URL(path, self.registration.scope);
+        const request = new Request(url.href, { cache: 'reload' });
+        const response = await fetch(request);
+        if (!response.ok) throw new Error(`Precache failed: ${url.href} (${response.status})`);
+        await cache.put(url.href, response.clone());
+        return url.href;
+      }));
+      const failures = results.filter(result => result.status === 'rejected');
+      if (failures.length || results.length !== CORE_ASSETS.length) {
+        const reason = failures[0]?.reason?.message || 'Incomplete app shell';
+        throw new Error(`App shell precache failed (${failures.length}/${CORE_ASSETS.length}): ${reason}`);
+      }
+    } catch (error) {
+      // Promise.allSettledにより全取得タスクの終了後にキャッシュを削除します。
+      await caches.delete(CACHE_NAME);
+      throw error;
     }
+    // ここでskipWaitingは呼ばず、画面側が完全取得後に明示的に切り替えます。
   })());
 });
 
@@ -50,27 +62,31 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // 版番号は必ずネットワークから取得し、Service Workerキャッシュへ保存しません。
-  if (url.pathname.endsWith('/version.json')) {
+  // バージョン確認と管理者ローカル設定は常にネットワークへ。
+  // config.local.js はアプリ更新ZIPに含めず、ブラウザ保存ハッシュを利用します。
+  if (url.pathname.endsWith('/version.json') || url.pathname.endsWith('/data/config.local.js')) {
     event.respondWith(fetch(new Request(request, { cache: 'no-store' })));
     return;
   }
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
+    // コア資産は版ごとのスナップショットから返し、旧版・新版の混在を防ぎます。
+    const cached = await cache.match(request, { ignoreSearch: true });
+    if (cached) return cached;
+
     try {
-      // reload/no-storeでブラウザーHTTPキャッシュも再検証します。
-      const freshRequest = new Request(request, { cache: 'no-store' });
-      const response = await fetch(freshRequest);
+      const response = await fetch(request);
       if (response && response.ok && (response.type === 'basic' || response.type === 'default')) {
+        // コア資産以外は通常のオンライン取得。任意データは必要に応じてキャッシュ。
         await cache.put(request, response.clone());
       }
       return response;
     } catch (error) {
-      const cached = await caches.match(request, { ignoreSearch: true });
-      if (cached) return cached;
+      const fallback = await caches.match(request, { ignoreSearch: true });
+      if (fallback) return fallback;
       if (request.mode === 'navigate') {
-        return (await caches.match('./index.html')) || Response.error();
+        return (await cache.match(new URL('./index.html', self.registration.scope).href)) || Response.error();
       }
       return Response.error();
     }

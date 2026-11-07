@@ -33,3 +33,7 @@ textarea{width:100%;min-height:210px;resize:vertical;border:1px solid #cbd9ea;bo
 .orderField{display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:var(--text)}
 .selectControl{min-width:210px;max-width:100%;padding:10px 12px;border:1px solid #cbd9ea;border-radius:12px;background:#fff;color:var(--text);font:inherit}
 .selectControl:focus{outline:2px solid #0ea5e9;outline-offset:2px}
+
+/* v1.2.6: ログイン画面からの更新確認 */
+.loginUpdateArea{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--card2)}
+.loginUpdateArea .footerNote{margin-bottom:0}

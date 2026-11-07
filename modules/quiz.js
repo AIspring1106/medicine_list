@@ -56,6 +56,7 @@ const els = {
   answerInput:document.getElementById('answerInput'),
   questionText:document.getElementById('questionText'),
   patternText:document.getElementById('patternText'),
+  questionWrongCount:document.getElementById('questionWrongCount'),
   feedbackBox:document.getElementById('feedbackBox'),
   progressFill:document.getElementById('progressFill'),
   quizCounter:document.getElementById('quizCounter'),
@@ -242,6 +243,37 @@ function groupWrongRecords(records){
   return [...map.values()];
 }
 
+function getCumulativeWrongCount(question){
+  if(!question) return 0;
+  const key = JSON.stringify([
+    question.item?.salesName || '',
+    question.item?.genericName || '',
+    question.item?.effect || '',
+    question.pattern?.key || '',
+  ]);
+  const grouped = groupWrongRecords(loadWrongLog());
+  const found = grouped.find(w => JSON.stringify([
+    w.source?.salesName || '',
+    w.source?.genericName || '',
+    w.source?.effect || '',
+    w.patternKey || '',
+  ]) === key);
+  return found ? Number(found.count || 0) : 0;
+}
+
+function renderQuestionWrongCount(question, justAnsweredWrong = false){
+  if(!els.questionWrongCount) return;
+  const count = getCumulativeWrongCount(question);
+  els.questionWrongCount.hidden = count <= 0;
+  if(count > 0){
+    els.questionWrongCount.textContent = justAnsweredWrong
+      ? `${count}回誤答（累計）`
+      : `過去の誤答：${count}回`;
+  } else {
+    els.questionWrongCount.textContent = '';
+  }
+}
+
 function shuffleArray(values){
   const result = [...values];
   for(let i = result.length - 1; i > 0; i -= 1){
@@ -340,6 +372,7 @@ function renderQuestion(){
   els.progressFill.style.width = `${(state.completedCount / state.questions.length) * 100}%`;
   els.questionText.textContent = displayJoined(q.item[q.pattern.ask]);
   els.patternText.textContent = q.pattern.label;
+  renderQuestionWrongCount(q);
   els.srcSales.textContent = displayJoined(q.item.salesName);
   els.srcGeneric.textContent = displayJoined(q.item.genericName);
   els.srcEffect.textContent = displayJoined(q.item.effect);
@@ -380,9 +413,11 @@ function revealAnswer(){
   els.answerInput.disabled = false;
   els.feedbackBox.style.display = 'block';
   els.feedbackBox.className = 'feedback ' + (ok ? 'correct' : 'incorrect');
-  const wrongCountText = ok ? '' : `<div class="small">この問題の誤答回数: <b>${escapeHtml(String((groupWrongRecords(state.sessionWrongs).find(x=>x.patternKey===q.pattern.key && rowKey(x.source)===rowKey(q.item)) || {}).count || 1))}</b></div>`;
+  const cumulativeWrongCount = getCumulativeWrongCount(q);
+  renderQuestionWrongCount(q, !ok);
+  const wrongCountText = ok ? '' : `<div class="small">この問題の累積誤答回数: <b>${escapeHtml(String(cumulativeWrongCount))}回誤答</b></div>`;
   els.feedbackBox.innerHTML = ok
-    ? `<div class="title">正解</div><div class="small">入力: ${escapeHtml(userAnswer)}</div><div>正答: <b>${escapeHtml(displayJoined(correctRaw))}</b></div>`
+    ? `<div class="title">正解</div><div class="small">入力: ${escapeHtml(userAnswer)}</div><div>正答: <b>${escapeHtml(displayJoined(correctRaw))}</b></div>${cumulativeWrongCount ? `<div class="small">これまでの誤答回数: <b>${escapeHtml(String(cumulativeWrongCount))}回</b></div>` : ''}`
     : `<div class="title">不正解</div><div class="small">入力: ${escapeHtml(userAnswer)}</div><div>正答: <b>${escapeHtml(displayJoined(correctRaw))}</b></div><div class="small">別解: ${escapeHtml(displayJoined(correctRaw))}</div>${wrongCountText}`;
 
   updateActionButtonState();
