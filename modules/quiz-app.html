@@ -36,6 +36,13 @@
         <p class="sub">複数選択したパターンを混ぜて出題します。重複行は自動で除外します。</p>
         <div class="checklist" id="patternList"></div>
         <div class="divider"></div>
+        <label class="orderField" for="orderModeSelect"><b>出題順</b>
+          <select id="orderModeSelect" class="selectControl">
+            <option value="random" selected>ランダム</option>
+            <option value="ordered">入力順（先頭から）</option>
+          </select>
+        </label>
+        <div class="divider"></div>
         <div class="row">
           <button class="btn success" id="startBtn">開始</button>
                   </div>
@@ -48,6 +55,7 @@
       <div class="card">
         <div class="spaced"><h2>直近の誤答</h2><span class="badge warn" id="wrongCountBadge">0件</span></div>
         <div class="row" style="margin-bottom:10px;">
+          <button class="btn warn" id="reviewAllWrongHomeBtn" disabled>誤答を総復習</button>
           <button class="btn secondary" id="toggleWrongBtn">表示 / 非表示</button>
                     <button class="btn secondary" id="clearWrongBtn">この一覧を消去</button>
         </div>

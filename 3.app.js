@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const APP_VERSION = '1.2.4';
+  const APP_VERSION = '1.2.5';
   const PATTERN_KEYS = ['sales_to_generic','generic_to_sales','sales_to_effect','effect_to_sales','generic_to_effect','effect_to_generic'];
   const config = window.APP_CONFIG || {};
   const ui = {};
@@ -22,7 +22,7 @@
       'loginScreen','workspace','loginForm','commonPassword','loginError','passwordSetupNotice',
       'modeScreen','menuScreen','quizFrameWrap','flashFrameWrap','quizFrame','flashFrame',
       'sharedDataInput','loadStatus','patternList','modeBadge','startModeBtn','flashcardOnlySetting',
-      'bookmarkedOnly','bookmarkList','bookmarkCount','wrongList','wrongCount','historyList','usageText',
+      'bookmarkedOnly','quizOrderMode','flashcardOrderMode','quizOrderSetting','flashcardOrderSetting','quizWrongOptionsCard','reviewAllWrongsBtn','bookmarkList','bookmarkCount','wrongList','wrongCount','historyList','usageText',
       'installBtn','updateBtn','updateHelp'
     ].forEach(id => ui[id] = $(id));
   }
@@ -51,7 +51,9 @@
     window.AppDB.saveSettings({
       dataText: ui.sharedDataInput.value,
       patterns: selectedPatterns(),
-      bookmarkedOnly: ui.bookmarkedOnly.checked
+      bookmarkedOnly: ui.bookmarkedOnly.checked,
+      quizOrder: ui.quizOrderMode.value,
+      flashcardOrder: ui.flashcardOrderMode.value
     });
   }
 
@@ -137,10 +139,13 @@
     selectedMode = mode;
     ui.modeBadge.textContent = mode === 'quiz' ? '医薬品クイズ' : '暗記カード';
     ui.flashcardOnlySetting.classList.toggle('hidden', mode !== 'flash');
+    ui.quizOrderSetting.classList.toggle('hidden', mode !== 'quiz');
+    ui.flashcardOrderSetting.classList.toggle('hidden', mode !== 'flash');
+    ui.quizWrongOptionsCard.classList.toggle('hidden', mode !== 'quiz');
     $('startModeBtn').textContent = mode === 'quiz' ? 'クイズを開始' : '暗記カードを開始';
     ui.usageText.innerHTML = mode === 'quiz'
-      ? '1. データを読み込み、出題パターンを選択します。<br>2. 問題に対する解答を入力し、「答えを表示」を押します。<br>3. 正誤と正答を確認し、「次へ」で進みます。<br>4. Enterキーでも主操作を実行できます。途中終了や誤答の復習も可能です。'
-      : '1. データを読み込み、出題パターンを選択します。<br>2. カード本体をタップして裏返し、答えを確認します。<br>3. 「前に戻る」「次へ進む」でカードを移動します。<br>4. 保存マークからブックマーク色を選び、保存済みカードだけで学習することもできます。';
+      ? '1. データを読み込み、出題パターンと出題順（入力順／ランダム）を選択します。<br>2. 問題に対する解答を入力し、「答えを表示」を押します。<br>3. 正誤と正答を確認し、「次へ」で進みます。<br>4. Enterキーでも主操作を実行できます。途中終了や過去の誤答の総復習も可能です。'
+      : '1. データを読み込み、出題パターンとカード順（入力順／ランダム）を選択します。<br>2. カード本体をタップして裏返し、答えを確認します。<br>3. 「前に戻る」「次へ進む」でカードを移動します。<br>4. 保存マークからブックマーク色を選び、保存済みカードだけで学習することもできます。';
     setScreen('menu');
     if (recordHistory) saveRoute({ page: 'menu', mode });
     renderSharedLists();
@@ -152,8 +157,8 @@
   function setSetupInFrames() {
     const data = ui.sharedDataInput.value;
     const patterns = selectedPatterns();
-    try { if (framesReady.quiz && ui.quizFrame.contentWindow.appBridge) ui.quizFrame.contentWindow.appBridge.setSetup(data, patterns); } catch (error) { console.warn('Quiz setup was not ready.', error); }
-    try { if (framesReady.flash && ui.flashFrame.contentWindow.appBridge) ui.flashFrame.contentWindow.appBridge.setSetup(data, patterns); } catch (error) { console.warn('Flashcard setup was not ready.', error); }
+    try { if (framesReady.quiz && ui.quizFrame.contentWindow.appBridge) ui.quizFrame.contentWindow.appBridge.setSetup(data, patterns, ui.quizOrderMode.value); } catch (error) { console.warn('Quiz setup was not ready.', error); }
+    try { if (framesReady.flash && ui.flashFrame.contentWindow.appBridge) ui.flashFrame.contentWindow.appBridge.setSetup(data, patterns, ui.flashcardOrderMode.value); } catch (error) { console.warn('Flashcard setup was not ready.', error); }
     persistSettings();
     updateDataStatus();
   }
@@ -171,11 +176,11 @@
     if (selectedMode === 'quiz') {
       setScreen('quiz');
       saveRoute({ page: 'quiz', mode: 'quiz' });
-      ui.quizFrame.contentWindow.appBridge.launch(ui.sharedDataInput.value, patterns);
+      ui.quizFrame.contentWindow.appBridge.launch(ui.sharedDataInput.value, patterns, ui.quizOrderMode.value);
     } else {
       setScreen('flash');
       saveRoute({ page: 'flash', mode: 'flash' });
-      ui.flashFrame.contentWindow.appBridge.launch(ui.sharedDataInput.value, patterns, ui.bookmarkedOnly.checked);
+      ui.flashFrame.contentWindow.appBridge.launch(ui.sharedDataInput.value, patterns, ui.bookmarkedOnly.checked, ui.flashcardOrderMode.value);
     }
   }
   function groupWrong(records) {
@@ -246,6 +251,7 @@
     const all = ui.quizFrame.contentWindow.appBridge.getWrongs() || [];
     const grouped = groupWrong(all);
     ui.wrongCount.textContent = `${grouped.length}件`;
+    ui.reviewAllWrongsBtn.disabled = grouped.length === 0;
     $('exportWrongCsvBtn').disabled = all.length === 0;
     if (!showWrongs) { ui.wrongList.innerHTML = '<div class="muted">「表示 / 非表示」で一覧を開けます。</div>'; return; }
     if (!grouped.length) { ui.wrongList.innerHTML = '<div class="muted">間違えた問題はありません。</div>'; return; }
@@ -338,6 +344,8 @@
       ui.patternList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = saved.patterns.includes(cb.value));
     }
     ui.bookmarkedOnly.checked = !!saved.bookmarkedOnly;
+    ui.quizOrderMode.value = saved.quizOrder === 'ordered' ? 'ordered' : 'random';
+    ui.flashcardOrderMode.value = saved.flashcardOrder === 'ordered' ? 'ordered' : 'random';
     workspaceInitialized = true;
     loadModeFrames();
     updateDataStatus();
@@ -551,6 +559,17 @@
     ui.sharedDataInput.addEventListener('input', () => { persistSettings(); updateDataStatus(); });
     ui.patternList.querySelectorAll('input').forEach(cb => cb.addEventListener('change', () => { persistSettings(); if (framesReady.quiz || framesReady.flash) setSetupInFrames(); }));
     ui.bookmarkedOnly.addEventListener('change', persistSettings);
+    ui.quizOrderMode.addEventListener('change', () => { persistSettings(); if (framesReady.quiz) setSetupInFrames(); });
+    ui.flashcardOrderMode.addEventListener('change', () => { persistSettings(); if (framesReady.flash) setSetupInFrames(); });
+    $('reviewAllWrongsBtn').addEventListener('click', () => {
+      if (!framesReady.quiz || !ui.quizFrame.contentWindow.appBridge) { alert('クイズ画面を読み込めません。'); return; }
+      const wrongs = ui.quizFrame.contentWindow.appBridge.getWrongs() || [];
+      if (!wrongs.length) { alert('復習できる誤答がありません。'); renderWrongs(); return; }
+      setSetupInFrames();
+      setScreen('quiz');
+      saveRoute({ page: 'quiz', mode: 'quiz' });
+      ui.quizFrame.contentWindow.appBridge.startAllWrongReview();
+    });
     $('toggleBookmarksBtn').addEventListener('click', () => { showBookmarks = !showBookmarks; renderBookmarks(); });
     $('clearBookmarksBtn').addEventListener('click', () => {
       if (!confirm('ブックマークをすべて消去しますか？')) return;

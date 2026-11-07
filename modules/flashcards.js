@@ -97,6 +97,7 @@ const els = {
   bookmarkHomeArea:document.getElementById('bookmarkHomeArea'),
   loadStatus:document.getElementById('loadStatus'),
   patternList:document.getElementById('patternList'),
+  orderModeSelect:document.getElementById('orderModeSelect'),
 };
 
 const state = {
@@ -114,6 +115,7 @@ const state = {
   bookmarkUseName: false,
   bookmarkMenuOpen: false,
   cardTransitionLocked: false,
+  orderMode: 'random',
 };
 
 // 3Dカードのスタッキングコンテキストから切り離し、クリックを確実に受け取れるようにする。
@@ -229,19 +231,39 @@ function renderPatternCheckboxes(){
   });
 }
 
-function buildQuestions(items, patterns){
+function shuffleArray(values){
+  const result = [...values];
+  for(let i = result.length - 1; i > 0; i -= 1){
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function buildQuestions(items, patterns, orderMode = state.orderMode){
   if(!items.length) throw new Error('問題の元データがありません。');
   if(!patterns.length) throw new Error('出題パターンを1つ以上選んでください。');
   if(state.bookmarkOnlySession){
-    const bookmarked = state.bookmarks
-      .filter(b => patterns.some(p => p.key === b.patternKey))
-      .map(b => ({ item: b.item, pattern: patterns.find(p => p.key === b.patternKey) || PATTERNS[0], fromBookmark: true }))
-      .sort(()=>Math.random() - 0.5);
+    let bookmarked;
+    if(orderMode === 'ordered'){
+      // 入力データの順番を優先し、同じ医薬品では選択パターン順に並べます。
+      bookmarked = [];
+      for(const item of items){
+        for(const pattern of patterns){
+          const entry = state.bookmarks.find(b => b.key === bookmarkKey(item, pattern.key));
+          if(entry) bookmarked.push({ item: entry.item, pattern, fromBookmark: true });
+        }
+      }
+    } else {
+      bookmarked = shuffleArray(state.bookmarks
+        .filter(b => patterns.some(p => p.key === b.patternKey))
+        .map(b => ({ item: b.item, pattern: patterns.find(p => p.key === b.patternKey) || PATTERNS[0], fromBookmark: true })));
+    }
     if(!bookmarked.length) throw new Error('ブックマークされたカードがありません。');
     return bookmarked;
   }
-  const shuffled = [...items].sort(()=>Math.random() - 0.5);
-  return shuffled.map(item=>({
+  const orderedItems = orderMode === 'ordered' ? [...items] : shuffleArray(items);
+  return orderedItems.map(item=>({
     item,
     pattern: patterns[Math.floor(Math.random() * patterns.length)]
   }));
@@ -397,7 +419,7 @@ function prepareSession(){
     alert('出題パターンを1つ以上選んでください。');
     return false;
   }
-  state.questions = buildQuestions(state.items, patterns);
+  state.questions = buildQuestions(state.items, patterns, state.orderMode);
   if(state.bookmarkOnlySession && !state.questions.length){
     alert('ブックマークされたカードがありません。');
     return false;
@@ -750,6 +772,7 @@ document.addEventListener('keydown', e=>{
 
 els.loadBtn.addEventListener('click', loadData);
 els.startBtn.addEventListener('click', startSession);
+els.orderModeSelect.addEventListener('change', ()=>{ state.orderMode = els.orderModeSelect.value === 'ordered' ? 'ordered' : 'random'; });
 els.toggleBookmarkListBtn.addEventListener('click', ()=>{
   state.showBookmarkList = !state.showBookmarkList;
   renderHome();
@@ -827,15 +850,17 @@ renderHome();
 mountBookmarkMenuPortal();
 
 window.appBridge = {
-  setSetup(data, patterns){
+  setSetup(data, patterns, orderMode = state.orderMode){
     els.dataInput.value = String(data || '');
+    state.orderMode = orderMode === 'ordered' ? 'ordered' : 'random';
+    els.orderModeSelect.value = state.orderMode;
     state.selectedPatterns = new Set(patterns || PATTERNS.map(p=>p.key));
     renderPatternCheckboxes();
     loadData();
     return state.items.length;
   },
-  launch(data, patterns, bookmarkedOnly){
-    this.setSetup(data, patterns);
+  launch(data, patterns, bookmarkedOnly, orderMode = state.orderMode){
+    this.setSetup(data, patterns, orderMode);
     els.bookmarkedOnlyStart.checked = !!bookmarkedOnly;
     state.bookmarkOnlySession = !!bookmarkedOnly;
     startSession();

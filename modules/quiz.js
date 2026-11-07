@@ -31,6 +31,7 @@ const PATTERNS = [
   { key:'effect_to_generic', label:'薬効 → 一般名', ask:'effect', ans:'genericName' },
 ];
 
+const MAX_NORMAL_QUESTIONS = 108;
 const MAX_HISTORY_ITEMS = 10;
 const MAX_RECENT_WRONG = 1000;
 const MAX_VISIBLE_WRONG = 10;
@@ -70,7 +71,9 @@ const els = {
   resultWrongArea:document.getElementById('resultWrongArea'),
   resultNote:document.getElementById('resultNote'),
   loadStatus:document.getElementById('loadStatus'),
-  patternList:document.getElementById('patternList')
+  patternList:document.getElementById('patternList'),
+  orderModeSelect:document.getElementById('orderModeSelect'),
+  reviewAllWrongHomeBtn:document.getElementById('reviewAllWrongHomeBtn')
 };
 
 const state = {
@@ -85,6 +88,7 @@ const state = {
   revealed: false,
   currentQuestion: null,
   reviewMode: 'normal',
+  orderMode: 'random',
 };
 
 let showWrongList = false;
@@ -238,12 +242,21 @@ function groupWrongRecords(records){
   return [...map.values()];
 }
 
-function buildNormalQuestions(items, patterns, maxCount = 100){
+function shuffleArray(values){
+  const result = [...values];
+  for(let i = result.length - 1; i > 0; i -= 1){
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function buildNormalQuestions(items, patterns, maxCount = MAX_NORMAL_QUESTIONS, orderMode = state.orderMode){
   if(!items.length) throw new Error('問題の元データがありません。');
   if(!patterns.length) throw new Error('出題パターンを1つ以上選んでください。');
   const questionCount = Math.min(maxCount, items.length);
-  const shuffled = [...items].sort(()=>Math.random() - 0.5);
-  const chosen = shuffled.slice(0, questionCount);
+  const orderedItems = orderMode === 'ordered' ? [...items] : shuffleArray(items);
+  const chosen = orderedItems.slice(0, questionCount);
   return chosen.map(item=>({
     item,
     pattern: patterns[Math.floor(Math.random() * patterns.length)],
@@ -251,10 +264,11 @@ function buildNormalQuestions(items, patterns, maxCount = 100){
   }));
 }
 
-function buildReviewQuestionsFromWrongs(wrongs){
+function buildReviewQuestionsFromWrongs(wrongs, orderMode = state.orderMode){
   const grouped = groupWrongRecords(wrongs || []);
   if(!grouped.length) throw new Error('復習できる誤答がありません。');
-  return grouped.map(w=>({
+  const ordered = orderMode === 'ordered' ? grouped : shuffleArray(grouped);
+  return ordered.map(w=>({
     item: w.source,
     pattern: PATTERNS.find(p=>p.key === w.patternKey) || PATTERNS[0],
     wrongCount: w.count || 0,
@@ -280,13 +294,13 @@ function prepareQuiz(mode = 'normal', wrongSource = null){
       alert('データが読み込まれていません。販売名,一般名,薬効を貼り付けて読み込んでください。');
       return false;
     }
-    state.questions = buildNormalQuestions(state.items, patterns, 100);
+    state.questions = buildNormalQuestions(state.items, patterns, MAX_NORMAL_QUESTIONS, state.orderMode);
     return true;
   }
 
   const sourceWrongs = wrongSource ? wrongSource.slice() : loadWrongLog();
   try{
-    state.questions = buildReviewQuestionsFromWrongs(sourceWrongs);
+    state.questions = buildReviewQuestionsFromWrongs(sourceWrongs, state.orderMode);
     return true;
   }catch(err){
     alert(err.message || '開始できませんでした。');
@@ -481,6 +495,7 @@ function updateReviewButtons(){
   // 結果側: その場で表示されている誤答がある時だけ復習可能
   els.reviewWrongResultBtn.disabled = currentWrongCount === 0;
   els.reviewAllWrongResultBtn.disabled = allWrongCount === 0;
+  els.reviewAllWrongHomeBtn.disabled = allWrongCount === 0;
 }
 
 function renderHome(){
@@ -568,6 +583,8 @@ document.addEventListener('keydown', e=>{
 
 els.loadBtn.addEventListener('click', loadData);
 els.startBtn.addEventListener('click', ()=>startQuiz('normal'));
+els.reviewAllWrongHomeBtn.addEventListener('click', startReviewFromAllWrong);
+els.orderModeSelect.addEventListener('change', ()=>{ state.orderMode = els.orderModeSelect.value === 'ordered' ? 'ordered' : 'random'; });
 els.reviewWrongResultBtn.addEventListener('click', startReviewFromResultWrong);
 els.reviewAllWrongResultBtn.addEventListener('click', startReviewFromAllWrong);
 els.clearHistoryBtn.addEventListener('click', ()=>{
@@ -593,17 +610,20 @@ renderPatternCheckboxes();
 renderHome();
 
 window.appBridge = {
-  setSetup(data, patterns){
+  setSetup(data, patterns, orderMode = state.orderMode){
     els.dataInput.value = String(data || '');
+    state.orderMode = orderMode === 'ordered' ? 'ordered' : 'random';
+    els.orderModeSelect.value = state.orderMode;
     state.selectedPatterns = new Set(patterns || PATTERNS.map(p=>p.key));
     renderPatternCheckboxes();
     loadData();
     return state.items.length;
   },
-  launch(data, patterns){
-    this.setSetup(data, patterns);
+  launch(data, patterns, orderMode = state.orderMode){
+    this.setSetup(data, patterns, orderMode);
     startQuiz('normal');
   },
+  startAllWrongReview(){ startReviewFromAllWrong(); },
   refresh(){ renderHome(); },
   getHistory(){ return loadHistory().map(x=>({...x})); },
   getWrongs(){ return loadWrongLog().map(x=>JSON.parse(JSON.stringify(x))); },

@@ -36,6 +36,13 @@
         <p class="sub">複数選択したパターンを混ぜて暗記カードを作成します。重複行は自動で除外します。</p>
         <div class="checklist" id="patternList"></div>
         <div class="divider"></div>
+        <label class="orderField" for="orderModeSelect"><b>カードの順番</b>
+          <select id="orderModeSelect" class="selectControl">
+            <option value="random" selected>ランダム</option>
+            <option value="ordered">入力順（先頭から）</option>
+          </select>
+        </label>
+        <div class="divider"></div>
         <div class="row">
           <button class="btn success" id="startBtn">開始</button>
           <label class="check" style="margin:0;min-width:220px;flex:1;">

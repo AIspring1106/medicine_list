@@ -90,3 +90,7 @@ html,body{height:auto;min-height:100%;overflow-x:hidden}
   body{margin:0}
   header,#homeScreen{display:none!important}
   .app{padding:18px 14px 28px}
+
+/* v1.2.5: モジュール単体表示時の順序設定 */
+.orderField{display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:var(--text)}
+.selectControl{min-width:210px;max-width:100%;padding:10px 12px;border:1px solid #cbd9ea;border-radius:12px;background:#fff;color:var(--text);font:inherit}

@@ -1,8 +1,8 @@
 /*
- * service-worker.js - 医薬品リスト v1.2.4
+ * service-worker.js - 医薬品リスト v1.2.5
  * オンラインでは常にサーバーの最新レスポンスを再検証し、通信不能時のみキャッシュへフォールバックします。
  */
-const CACHE_NAME = 'medicine-learning-pwa-v1.2.4';
+const CACHE_NAME = 'medicine-learning-pwa-v1.2.5';
 const CACHE_PREFIX = 'medicine-learning-pwa-';
 const CORE_ASSETS = [
   './', './index.html', './1.indel.html', './2.style.css', './3.app.js', './database.js',

@@ -6,20 +6,20 @@
   <meta name="theme-color" content="#0ea5e9">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="医薬品リスト v1.2.4">
+  <meta name="apple-mobile-web-app-title" content="医薬品リスト v1.2.5">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <link rel="stylesheet" href="./2.style.css">
-  <title>医薬品リスト v1.2.4</title>
+  <title>医薬品リスト v1.2.5</title>
 </head>
 <body>
 <div class="app">
   <section id="loginScreen" class="screen active">
     <div class="card loginCard">
       <div class="brand">
-        <h1>医薬品リスト v1.2.4</h1>
+        <h1>医薬品リスト v1.2.5</h1>
         <p>医薬品クイズ・暗記カード 統合版</p>
       </div>
       <div class="divider"></div>
@@ -49,7 +49,7 @@
   <div id="workspace" class="hidden">
     <header>
       <div class="brand">
-        <h1>医薬品リスト v1.2.4</h1>
+        <h1>医薬品リスト v1.2.5</h1>
         <p>医薬品クイズ・暗記カード 統合版</p>
       </div>
       <div class="headerActions">
@@ -109,6 +109,26 @@
             <label class="check"><input type="checkbox" value="generic_to_effect" checked><div><b>一般名 → 薬効</b><span>一般名から薬効を答える</span></div></label>
             <label class="check"><input type="checkbox" value="effect_to_generic" checked><div><b>薬効 → 一般名</b><span>薬効から一般名を答える</span></div></label>
           </div>
+          <div id="quizOrderSetting" class="orderSetting">
+            <div class="divider"></div>
+            <label class="orderField" for="quizOrderMode"><b>出題順</b>
+              <select id="quizOrderMode" class="selectControl">
+                <option value="random" selected>ランダム</option>
+                <option value="ordered">入力順（先頭から）</option>
+              </select>
+            </label>
+            <p class="tiny">選択した順序で最大108問を出題します。</p>
+          </div>
+          <div id="flashcardOrderSetting" class="hidden orderSetting">
+            <div class="divider"></div>
+            <label class="orderField" for="flashcardOrderMode"><b>カードの順番</b>
+              <select id="flashcardOrderMode" class="selectControl">
+                <option value="random" selected>ランダム</option>
+                <option value="ordered">入力順（先頭から）</option>
+              </select>
+            </label>
+            <p class="tiny">入力した医薬品の並び順、またはランダムでカードを表示します。</p>
+          </div>
           <div id="flashcardOnlySetting" class="hidden">
             <div class="divider"></div>
             <label class="check"><input type="checkbox" id="bookmarkedOnly"><div><b>ブックマークしたものだけ見る</b><span>暗記カードで保存済みカードのみを出題します</span></div></label>
@@ -125,9 +145,10 @@
           <div class="row" style="margin-bottom:10px"><button class="btn secondary" id="toggleBookmarksBtn" type="button">表示 / 非表示</button><button class="btn secondary" id="clearBookmarksBtn" type="button">ブックマークを消去</button></div>
           <div id="bookmarkList" class="list"></div>
         </div>
-        <div class="card">
+        <div class="card" id="quizWrongOptionsCard">
           <div class="spaced"><h2>直近の誤答</h2><span class="badge warn" id="wrongCount">0件</span></div>
           <div class="row" style="margin-bottom:10px">
+            <button class="btn warn" id="reviewAllWrongsBtn" type="button" disabled>誤答を総復習</button>
             <button class="btn secondary" id="toggleWrongsBtn" type="button">表示 / 非表示</button>
             <button class="btn secondary" id="exportWrongCsvBtn" type="button">誤答CSV出力</button>
             <button class="btn secondary" id="clearWrongsBtn" type="button">誤答一覧を消去</button>

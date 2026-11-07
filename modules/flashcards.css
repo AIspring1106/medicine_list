@@ -253,3 +253,7 @@ html,body{height:auto;min-height:100%;overflow-x:hidden}
 .medicineBookmarkColorActions{display:flex;justify-content:flex-end;gap:9px;margin-top:17px}
 .medicineBookmarkColorActions button{border:1px solid #d5e3f3;border-radius:11px;padding:10px 16px;background:#f5f8fc;color:#0f172a;font:inherit;font-weight:750;cursor:pointer}
 .medicineBookmarkColorActions button[data-save]{border-color:var(--choice-color,#0ea5e9);background:var(--choice-color,#0ea5e9);color:#fff}
+
+/* v1.2.5: モジュール単体表示時の順序設定 */
+.orderField{display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:var(--text)}
+.selectControl{min-width:210px;max-width:100%;padding:10px 12px;border:1px solid #cbd9ea;border-radius:12px;background:#fff;color:var(--text);font:inherit}
