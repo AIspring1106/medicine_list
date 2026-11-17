@@ -1,0 +1,14 @@
+{
+  "version": "1.2.7",
+  "revision": 8,
+  "app": "医薬品リスト",
+  "releasedAt": "2026-11-16",
+  "updateProtocol": 7,
+  "releaseNotes": [
+    "クイズ・暗記カード両モードにセッションの一時中断・再開を追加しました。問題順・カード順・現在位置・入力途中の解答を端末内に保存します。",
+    "再読み込み後も直前の画面（モードメニュー／クイズ／暗記カード）へ復帰し、ランダム出題の順番を保存済みのまま維持します。",
+    "GitHub ActionsのpushイベントからOneSignal APIを呼び出し、Commit後に購読端末へPush通知する構成を追加しました。APIキーはGitHub Actions Secretsに保存します。",
+    "maintenance.jsonと必須ファイルの存在確認を行い、更新作業中や必須ファイル欠落時はメンテナンス画面でアクセスを制限します。"
+  ],
+  "buildId": "r8-session-resume-push-maintenance-20261116"
+}
