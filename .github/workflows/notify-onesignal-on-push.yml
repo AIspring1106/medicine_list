@@ -1,0 +1,67 @@
+name: Notify PWA subscribers after repository commit
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  notify-subscribers:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.deleted }}
+    steps:
+      - name: Check out committed files
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Check maintenance flag
+        id: maintenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f maintenance.json ]] || ! jq -e 'type == "object" and has("enabled") and (.enabled | type == "boolean")' maintenance.json >/dev/null; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Maintenance marker is missing or invalid; suppressing push notification."
+          else
+            ENABLED="$(jq -r '.enabled' maintenance.json)"
+            echo "enabled=${ENABLED}" >> "$GITHUB_OUTPUT"
+            if [[ "$ENABLED" == "true" ]]; then
+              echo "Maintenance is active; push notification will be sent after maintenance ends."
+            fi
+          fi
+
+      - name: Send OneSignal Web Push notification
+        if: ${{ steps.maintenance.outputs.enabled != 'true' }}
+        env:
+          ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
+          ONESIGNAL_REST_API_KEY: ${{ secrets.ONESIGNAL_REST_API_KEY }}
+          APP_URL: ${{ vars.APP_URL }}
+          COMMIT_TITLE: ${{ github.event.head_commit.message }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${ONESIGNAL_APP_ID}" || -z "${ONESIGNAL_REST_API_KEY}" ]]; then
+            echo "::warning::OneSignal secrets are missing; no push notification was sent."
+            exit 0
+          fi
+          SHORT_MESSAGE="${COMMIT_TITLE%%$'\n'*}"
+          SHORT_MESSAGE="${SHORT_MESSAGE:0:120}"
+          BODY="GitHubにアプリの更新がCommitされました。アプリを開いて更新内容を確認してください。${SHORT_MESSAGE:+ 変更: ${SHORT_MESSAGE}}"
+          jq -n \
+            --arg app_id "$ONESIGNAL_APP_ID" \
+            --arg heading "更新があります！" \
+            --arg contents "$BODY" \
+            --arg url "$APP_URL" \
+            '{app_id:$app_id,target_channel:"push",included_segments:["Subscribed Users"],headings:{ja:$heading,en:$heading},contents:{ja:$contents,en:$contents}} + (if $url != "" then {url:$url} else {} end)' \
+            > /tmp/onesignal-payload.json
+          curl --fail-with-body --silent --show-error \
+            --request POST "https://api.onesignal.com/notifications" \
+            --header "Authorization: Key ${ONESIGNAL_REST_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data-binary @/tmp/onesignal-payload.json
