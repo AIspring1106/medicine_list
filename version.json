@@ -1,0 +1,14 @@
+{
+  "version": "1.2.7",
+  "revision": 9,
+  "app": "医薬品リスト",
+  "releasedAt": "2026-11-18",
+  "updateProtocol": 7,
+  "releaseNotes": [
+    "時間設定を含むメンテナンス制御・メンテナンス画面・起動前メンテナンス判定を削除しました。",
+    "GitHubへのCommitを契機にOneSignalから購読端末へ更新通知を送る機能は維持し、通知先URLをGitHub Pagesのアプリ配置先へ修正しました。",
+    "Android向け通知アイコン（青地に白いカプセル剤）を追加し、OneSignalの通知アイコンとバッジに反映しました。",
+    "PWAのアイコンを青地に白いカプセル剤のデザインへ変更しました。"
+  ],
+  "buildId": "r9-no-maintenance-pages-notify-icon-20261118"
+}
