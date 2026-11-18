@@ -18,7 +18,7 @@ jobs:
         env:
           ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
           ONESIGNAL_REST_API_KEY: ${{ secrets.ONESIGNAL_REST_API_KEY }}
-          APP_URL: ${{ vars.APP_URL }}
+          APP_URL: 'https://aispring1106.github.io/medicine_list/'
           GITHUB_REPOSITORY: ${{ github.repository }}
           COMMIT_TITLE: ${{ github.event.head_commit.message }}
         shell: bash
